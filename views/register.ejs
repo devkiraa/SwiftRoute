@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Register - SwiftRoute</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center">
+  <!-- Centered Card Container -->
+  <div class="bg-white rounded-lg shadow-xl w-full max-w-md">
+    <!-- Header Section -->
+    <header class="bg-green-600 p-6 rounded-t-lg">
+      <h1 class="text-2xl font-bold text-white text-center">Create Your Account</h1>
+      <p class="mt-2 text-center text-green-100">Register your company and create your owner account</p>
+    </header>
+    <!-- Register Form -->
+    <main class="p-6">
+      <form action="/register" method="POST" class="space-y-5">
+        <!-- Company Information -->
+        <div>
+          <label class="block text-gray-700 text-sm font-semibold mb-2" for="companyName">Company Name</label>
+          <input type="text" id="companyName" name="companyName" placeholder="Your Company Name" required class="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-300" />
+        </div>
+        <div>
+          <label class="block text-gray-700 text-sm font-semibold mb-2" for="contactEmail">Contact Email</label>
+          <input type="email" id="contactEmail" name="contactEmail" placeholder="contact@example.com" required class="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-300" />
+        </div>
+        <div>
+          <label class="block text-gray-700 text-sm font-semibold mb-2" for="subscriptionPlan">Subscription Plan</label>
+          <select id="subscriptionPlan" name="subscriptionPlan" class="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-300">
+            <option value="basic">Basic</option>
+            <option value="premium">Premium</option>
+          </select>
+        </div>
+        <!-- User (Warehouse Owner) Account Information -->
+        <div>
+          <label class="block text-gray-700 text-sm font-semibold mb-2" for="username">Username</label>
+          <input type="text" id="username" name="username" placeholder="Desired Username" required class="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-300" />
+        </div>
+        <div>
+          <label class="block text-gray-700 text-sm font-semibold mb-2" for="password">Password</label>
+          <input type="password" id="password" name="password" placeholder="Choose a secure password" required class="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-300" />
+        </div>
+        <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded transition">
+          Register
+        </button>
+      </form>
+      <p class="mt-4 text-center text-gray-600 text-sm">
+        Already have an account? <a href="/login" class="text-green-600 font-semibold hover:underline">Login here</a>.
+      </p>
+    </main>
+  </div>
+</body>
+</html>

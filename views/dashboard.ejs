@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dashboard - SwiftRoute</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Inter Font -->
+  <link
+    rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+  />
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    /* Dropdown transition */
+    .dropdown-menu {
+      transition: opacity 0.2s ease;
+    }
+  </style>
+</head>
+<body class="bg-gray-50">
+
+  <!-- Main Container with Sidebar + Content -->
+  <div class="flex min-h-screen">
+
+    <!-- Sidebar -->
+    <aside class="w-64 bg-white border-r border-gray-200 flex flex-col">
+      <div class="px-6 py-4">
+        <h1 class="text-xl font-bold tracking-tight text-gray-800">
+          SwiftRoute
+        </h1>
+      </div>
+      <nav class="flex-1 px-6 pt-4 space-y-2">
+        <a
+          href="/dashboard"
+          class="flex items-center space-x-3 px-3 py-2 rounded-md text-gray-700 hover:bg-gray-100"
+        >
+          <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M3 5h18v2H3zM3 11h18v2H3zM3 17h18v2H3z"></path>
+          </svg>
+          <span>Home</span>
+        </a>
+        <a
+          href="/notifications"
+          class="flex items-center space-x-3 px-3 py-2 rounded-md text-gray-700 hover:bg-gray-100"
+        >
+          <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 7a5 5 0 10.001 10.001A5 5 0 0012 7zM12 3a9 9 0 11.001 18.001A9 9 0 0112 3z"></path>
+          </svg>
+          <span>Notifications</span>
+        </a>
+        <a
+          href="/projects"
+          class="flex items-center space-x-3 px-3 py-2 rounded-md text-gray-700 hover:bg-gray-100"
+        >
+          <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M19 3H5c-1.1 0-2 .9-2 2v16l4-4h12c1.1 
+              0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 12H6.83L5 16.83V5h14v10z"></path>
+          </svg>
+          <span>Projects</span>
+        </a>
+        <a
+          href="/tasks"
+          class="flex items-center space-x-3 px-3 py-2 rounded-md text-gray-700 hover:bg-gray-100"
+        >
+          <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M9 3a7 7 0 00-7 7v9a1 1 0 001 1h4v-9H4a5 5 0 015-5h6a5 
+              5 0 015 5h-3v9h4a1 1 0 001-1v-9a7 7 0 00-7-7H9z"></path>
+          </svg>
+          <span>Tasks</span>
+        </a>
+        <a
+          href="/reporting"
+          class="flex items-center space-x-3 px-3 py-2 rounded-md text-gray-700 hover:bg-gray-100"
+        >
+          <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M11 2v2H3v2h8v2l3-3-3-3zm0 14l-3 3 3 3v-2h8v-2h-8v-2zM4 
+              10h16v2H4v-2z"></path>
+          </svg>
+          <span>Reporting</span>
+        </a>
+        <a
+          href="/users"
+          class="flex items-center space-x-3 px-3 py-2 rounded-md text-gray-700 hover:bg-gray-100"
+        >
+          <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M7 10c0-2.755 2.243-5 5-5s5 2.245 5 5c0 .201-.025.396-.06.586 
+              C15.733 10.217 14.428 9 12 9c-2.428 0-3.733 1.217-4.94 1.586C7.026 
+              10.395 7 10.2 7 10z M12 23c-2.489 0-4.677-.928-6.364-2.447.03-2.242 
+              4.498-3.476 6.364-3.476 1.866 0 6.334 1.234 6.364 3.476C16.677 
+              22.072 14.489 23 12 23z"></path>
+          </svg>
+          <span>Users</span>
+        </a>
+      </nav>
+      <!-- Footer / Profile in sidebar -->
+      <div class="relative mt-auto px-6 py-4 border-t border-gray-200">
+        <button
+          id="profileToggle"
+          class="w-full flex items-center justify-start space-x-3 focus:outline-none"
+          onclick="toggleProfileDropdown()"
+        >
+          <img
+            src="<%= storeUser.avatarUrl || 'https://via.placeholder.com/40' %>"
+            alt="User Avatar"
+            class="w-10 h-10 rounded-full"
+          />
+          <div class="text-left">
+            <p class="text-sm font-medium text-gray-800"><%= storeUser.storeName %></p>
+            <p class="text-xs text-gray-500"><%= storeUser.username %></p>
+          </div>
+          <svg id="profileArrow" class="w-4 h-4 ml-auto transform transition-transform duration-200" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+          </svg>
+        </button>
+        <!-- Dropdown Menu -->
+        <div id="profileDropdown" class="dropdown-menu absolute bottom-14 left-6 bg-white border border-gray-200 rounded shadow-lg py-2 w-48 hidden">
+          <a href="/profile" class="block px-4 py-2 text-gray-700 hover:bg-gray-100">Profile</a>
+          <a href="/logout" class="block px-4 py-2 text-gray-700 hover:bg-gray-100">Logout</a>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <div class="flex-1 flex flex-col">
+      <!-- Top Bar -->
+      <header class="py-4 px-6 border-b border-gray-200 bg-white">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-gray-800">Customers</h2>
+          <div class="flex space-x-2">
+            <button
+              class="px-4 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-50"
+            >
+              Import
+            </button>
+            <button
+              class="px-4 py-2 bg-blue-600 text-white font-semibold rounded hover:bg-blue-700"
+            >
+              Add Customer
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <!-- Content: Overview Stats -->
+      <section class="p-6 bg-gray-50">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <!-- Total Customers -->
+          <div class="bg-white border rounded-lg p-4 flex flex-col">
+            <p class="text-sm text-gray-500">Total Customers</p>
+            <div class="mt-2 flex items-baseline space-x-2">
+              <h3 class="text-2xl font-bold text-gray-800"><%= stats.totalCustomers %></h3>
+              <span class="text-sm <%= stats.totalCustomersChange >= 0 ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50' %> rounded px-2 py-0.5">
+                <%= stats.totalCustomersChange %>% 
+              </span>
+            </div>
+          </div>
+          <!-- Members -->
+          <div class="bg-white border rounded-lg p-4 flex flex-col">
+            <p class="text-sm text-gray-500">Members</p>
+            <div class="mt-2 flex items-baseline space-x-2">
+              <h3 class="text-2xl font-bold text-gray-800"><%= stats.members %></h3>
+              <span class="text-sm <%= stats.membersChange >= 0 ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50' %> rounded px-2 py-0.5">
+                <%= stats.membersChange %>% 
+              </span>
+            </div>
+          </div>
+          <!-- Active Now -->
+          <div class="bg-white border rounded-lg p-4 flex flex-col">
+            <p class="text-sm text-gray-500">Active Now</p>
+            <div class="mt-2 flex items-baseline space-x-2">
+              <h3 class="text-2xl font-bold text-gray-800"><%= stats.activeNow %></h3>
+              <span class="text-sm <%= stats.activeNowChange >= 0 ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50' %> rounded px-2 py-0.5">
+                <%= stats.activeNowChange %>% 
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Main Table -->
+      <section class="px-6 pb-6 flex-1 overflow-auto">
+        <div class="bg-white border rounded-lg p-4">
+          <!-- Table Header -->
+          <div class="flex items-center justify-between mb-4">
+            <div class="space-x-4">
+              <button class="text-gray-900 font-medium border-b-2 border-blue-600 pb-2">
+                Overview
+              </button>
+              <button class="text-gray-500 hover:text-gray-800 font-medium pb-2">
+                US, AU
+              </button>
+              <button class="text-gray-500 hover:text-gray-800 font-medium pb-2">
+                EU
+              </button>
+              <button class="text-gray-500 hover:text-gray-800 font-medium pb-2">
+                Vietnam
+              </button>
+              <button class="text-gray-500 hover:text-gray-800 font-medium pb-2">
+                Custom
+              </button>
+            </div>
+          </div>
+
+          <!-- Table Content -->
+          <div class="overflow-x-auto">
+            <table class="w-full text-left">
+              <thead class="border-b text-sm uppercase text-gray-500">
+                <tr>
+                  <th class="py-2">Name</th>
+                  <th class="py-2">User</th>
+                  <th class="py-2">License use</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y text-gray-700">
+                <% customers.forEach(customer => { %>
+                <tr class="hover:bg-gray-50">
+                  <td class="py-3">
+                    <div class="flex items-center space-x-3">
+                      <img
+                        src="<%= customer.iconUrl || 'https://via.placeholder.com/32' %>"
+                        alt="Icon"
+                        class="w-8 h-8 rounded"
+                      />
+                      <div>
+                        <p class="font-semibold"><%= customer.name %></p>
+                        <p class="text-sm text-gray-500"><%= customer.website %></p>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="py-3">
+                    <span class="inline-block px-2 py-1 text-sm <%= customer.type === 'Customer' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700' %> rounded">
+                      <%= customer.type %>
+                    </span>
+                  </td>
+                  <td class="py-3">
+                    <div class="flex -space-x-2">
+                      <% customer.licenseUsers.forEach(user => { %>
+                        <img
+                          class="w-6 h-6 rounded-full border-2 border-white"
+                          src="<%= user.avatarUrl || 'https://via.placeholder.com/24' %>"
+                          alt="<%= user.name %>"
+                        />
+                      <% }) %>
+                    </div>
+                  </td>
+                </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination -->
+          <div class="flex items-center justify-between pt-4">
+            <p class="text-sm text-gray-500">Page <%= pagination.currentPage %> of <%= pagination.totalPages %></p>
+            <div class="space-x-2">
+              <button class="px-3 py-1 text-sm text-gray-500 border border-gray-300 rounded hover:bg-gray-100">
+                Previous
+              </button>
+              <button class="px-3 py-1 text-sm text-gray-500 border border-gray-300 rounded hover:bg-gray-100">
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div> <!-- End Main Content Area -->
+
+  </div> <!-- End Main Container -->
+
+  <!-- JavaScript for Profile Dropdown -->
+  <script>
+    function toggleProfileDropdown() {
+      const dropdown = document.getElementById('profileDropdown');
+      const arrow = document.getElementById('profileArrow');
+      if (dropdown.classList.contains('hidden')) {
+        dropdown.classList.remove('hidden');
+        arrow.classList.add('rotate-180');
+      } else {
+        dropdown.classList.add('hidden');
+        arrow.classList.remove('rotate-180');
+      }
+    }
+    
+    // Optional: close dropdown on outside click
+    document.addEventListener('click', function(event) {
+      const profileButton = document.getElementById('profileToggle');
+      const dropdown = document.getElementById('profileDropdown');
+      if (!profileButton.contains(event.target)) {
+        dropdown.classList.add('hidden');
+        document.getElementById('profileArrow').classList.remove('rotate-180');
+      }
+    });
+  </script>
+</body>
+</html>
