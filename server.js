@@ -30,6 +30,7 @@ const itemRoutes = require('./routes/items');
 const orderRoutes = require('./routes/orders');
 const reportingRoutes = require('./routes/reporting');
 const adminRoutes = require('./routes/admin'); // If you separate admin routes
+const methodOverride = require('method-override');
 
 const app = express();
 
@@ -54,7 +55,7 @@ app.set('view engine', 'ejs');
 // app.use(express.static(path.join(__dirname, 'public')));
 
 // --- Core Middlewares ---
-app.use(bodyParser.urlencoded({ extended: false })); // Parse URL-encoded bodies
+app.use(bodyParser.urlencoded({ extended: true })); // Parse URL-encoded bodies
 app.use(bodyParser.json()); // Parse JSON bodies
 
 // --- Session Middleware (Global) ---
@@ -131,7 +132,7 @@ app.use('/items', itemRoutes);
 app.use('/orders', orderRoutes);
 app.use('/reporting', reportingRoutes);
 app.use('/admin', adminRoutes);
-
+app.use(methodOverride('_method'));
 // --- Basic 404 Handler ---
 // Catch requests that don't match any routes above
 app.use((req, res, next) => {
