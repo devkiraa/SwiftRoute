@@ -7,7 +7,7 @@ const UserSchema = new mongoose.Schema({
   password: { type: String, required: true },  // Hashed password
   role: { 
     type: String, 
-    enum: ['warehouse_owner', 'store_owner', 'employee', 'delivery_partner', 'customer'], 
+    enum: ['warehouse_owner', 'store_owner', 'employee', 'delivery_partner', 'customer', 'admin'], 
     required: true 
   },
   // For a warehouse owner, link to the company; for store users, link to the store.

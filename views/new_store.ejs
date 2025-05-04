@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+
+    <style>
+        /* Map container needs a defined height */
+        #map {
+            height: 450px;
+            width: 100%;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+        }
+        /* Remove suggestion styles, Google Autocomplete handles its own UI */
+        .container { max-width: 960px; }
+        h1 { margin-bottom: 1.5rem; }
+        /* Prevent Google logo/controls overlap */
+        .gm-style .gm-style-iw-c { padding: 10px !important; } /* Adjust padding */
+        .gm-style .gm-style-iw-d { overflow: auto !important; padding-right: 10px !important; } /* Ensure scroll and padding */
+        .info-window-content { max-width: 250px; font-size: 0.9rem; line-height: 1.4; } /* Style info window content */
+        .pac-container { z-index: 1051 !important; } /* Ensure suggestions above Bootstrap modals if any */
+    </style>
+</head>
+<body>
+    <div class="container mt-4 mb-5">
+        <h1 class="mb-4"><%= title %></h1>
+
+        <% if (typeof error !== 'undefined' && error) { %>
+            <div class="alert alert-danger" role="alert"> <%= error %> </div>
+        <% } %>
+
+        <form action="/stores" method="POST" id="store-form">
+            <div class="row g-3">
+                <div class="col-md-6">
+                     <fieldset class="border p-3 rounded mb-3">
+                         <legend class="w-auto px-2 h6">Store Details</legend>
+                         <div class="mb-3"> <label for="storeName" class="form-label">Store Name:</label> <input type="text" class="form-control" id="storeName" name="storeName" value="<%= typeof formData !== 'undefined' ? formData.storeName : '' %>" required> </div>
+                         <div class="mb-3"> <label for="phone" class="form-label">Phone:</label> <input type="tel" class="form-control" id="phone" name="phone" value="<%= typeof formData !== 'undefined' ? formData.phone : '' %>"> </div>
+                         <div class="mb-3"> <label for="email" class="form-label">Email:</label> <input type="email" class="form-control" id="email" name="email" value="<%= typeof formData !== 'undefined' ? formData.email : '' %>"> </div>
+                         <div class="mb-3"> <label for="deliveryWindow" class="form-label">Delivery Window:</label> <input type="text" class="form-control" id="deliveryWindow" name="deliveryWindow" value="<%= typeof formData !== 'undefined' ? formData.deliveryWindow : '' %>"> </div>
+                     </fieldset>
+                </div>
+
+                 <div class="col-md-6">
+                     <fieldset class="border p-3 rounded mb-3">
+                         <legend class="w-auto px-2 h6">Location</legend>
+
+                        <div class="mb-3">
+                             <label for="address-search" class="form-label">Search Address:</label>
+                             <input type="text" class="form-control" id="address-search" placeholder="Start typing address...">
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="address" class="form-label">Full Address (Confirm / Enter Manually):</label>
+                            <input type="text" class="form-control" id="address" name="address" value="<%= typeof formData !== 'undefined' ? formData.address : '' %>" required>
+                        </div>
+
+                        <div class="mb-3">
+                             <label class="form-label d-block">Select Store Location:</label> <button type="button" id="use-current-location" class="btn btn-secondary btn-sm mb-2">
+                                Use Current Location
+                             </button>
+                             <div id="map"></div> <input type="hidden" id="latitude" name="latitude" value="<%= typeof formData !== 'undefined' ? formData.latitude : '' %>">
+                             <input type="hidden" id="longitude" name="longitude" value="<%= typeof formData !== 'undefined' ? formData.longitude : '' %>">
+                             <div id="geolocation-status" class="form-text mt-1"></div>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+
+            <div class="mt-3">
+                <button type="submit" class="btn btn-primary">Add Store</button>
+            </div>
+        </form>
+    </div>
+
+    <script src="https://maps.googleapis.com/maps/api/js?key=<%= googleMapsApiKey %>&libraries=places,marker&callback=initializeGoogleMap" async defer></script>
+
+    <script>
+        let map;
+        let marker;
+        let autocomplete;
+        let infoWindow;
+
+        // ... (Keep element getters) ...
+        const latitudeInput = document.getElementById('latitude');
+        const longitudeInput = document.getElementById('longitude');
+        const addressInput = document.getElementById('address');
+        const searchInput = document.getElementById('address-search');
+        const useCurrentLocationButton = document.getElementById('use-current-location');
+        const geolocationStatusDiv = document.getElementById('geolocation-status');
+
+        const defaultLocation = { lat: 12.9716, lng: 77.5946 }; // Bangalore
+        const defaultZoom = 12;
+
+        async function initializeGoogleMap() {
+            try { // Add try...catch for library loading
+                const { Map } = await google.maps.importLibrary("maps");
+                const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
+                const { InfoWindow } = await google.maps.importLibrary("maps");
+
+                console.log("Google Maps Libraries Loaded"); // Debug log
+
+                map = new Map(document.getElementById("map"), {
+                    center: defaultLocation,
+                    zoom: defaultZoom,
+                    mapId: "YOUR_MAP_ID", // Optional
+                    mapTypeControl: false
+                });
+                console.log("Map Initialized"); // Debug log
+
+                infoWindow = new InfoWindow();
+                console.log("InfoWindow Initialized"); // Debug log
+
+                autocomplete = new google.maps.places.Autocomplete(searchInput, {
+                     fields: ["formatted_address", "geometry", "name"],
+                     componentRestrictions: { country: "in" }
+                });
+                autocomplete.bindTo("bounds", map);
+                console.log("Autocomplete Initialized"); // Debug log
+
+                marker = new AdvancedMarkerElement({
+                     map: map,
+                     position: null, // Start with no position until set
+                     gmpDraggable: true,
+                });
+                console.log("Marker Initialized"); // Debug log
+
+                // --- Event Listeners ---
+                autocomplete.addListener("place_changed", () => {
+                    const place = autocomplete.getPlace();
+                    if (!place.geometry || !place.geometry.location) return;
+                    if (place.geometry.viewport) map.fitBounds(place.geometry.viewport);
+                    else { map.setCenter(place.geometry.location); map.setZoom(17); }
+                    // Pass the formatted address directly from the place object
+                    updateLocation(place.geometry.location.lat(), place.geometry.location.lng(), place.formatted_address, false); // No need to fetch address again
+                });
+
+                map.addListener("click", (e) => {
+                     if (e.latLng) {
+                        console.log("Map Clicked:", e.latLng.lat(), e.latLng.lng()); // Debug log
+                        updateLocation(e.latLng.lat(), e.latLng.lng(), null, true); // Fetch address
+                     }
+                });
+
+                marker.addListener('dragend', () => {
+                     if (marker.position) {
+                        console.log("Marker Dragged:", marker.position.lat, marker.position.lng); // Debug log
+                        updateLocation(marker.position.lat, marker.position.lng, null, true); // Fetch address
+                     }
+                });
+
+                marker.addListener('click', () => {
+                    const content = infoWindow.getContent();
+                    console.log("Marker Clicked. InfoWindow Content:", content); // Debug log
+                    if (content) {
+                        infoWindow.open({ map: map, anchor: marker });
+                        console.log("InfoWindow Opened."); // Debug log
+                    } else {
+                        console.log("InfoWindow not opened (no content)."); // Debug log
+                    }
+                });
+
+                 // Set initial state if form data exists
+                 if (latitudeInput.value && longitudeInput.value) {
+                     const initialLat = parseFloat(latitudeInput.value);
+                     const initialLng = parseFloat(longitudeInput.value);
+                     if(!isNaN(initialLat) && !isNaN(initialLng)){
+                        console.log("Setting initial location from form data:", initialLat, initialLng); // Debug log
+                        // Don't fetch address, use existing one, also set InfoWindow
+                        updateLocation(initialLat, initialLng, addressInput.value || null, false);
+                     }
+                 }
+
+            } catch(error) {
+                 console.error("Error during Google Maps initialization:", error); // Catch errors here
+                 geolocationStatusDiv.textContent = 'Error loading map components.';
+                 geolocationStatusDiv.className = 'form-text text-danger';
+            }
+        } // End of initializeGoogleMap
+
+
+        // --- Function to Update Location ---
+        function updateLocation(lat, lng, prefilledAddress = null, fetchAddressIfNeeded = false) {
+             console.log("updateLocation called with:", { lat, lng, prefilledAddress, fetchAddressIfNeeded }); // Debug log
+
+             if (isNaN(lat) || isNaN(lng)) {
+                 console.error("updateLocation received invalid coords:", lat, lng);
+                 return;
+             }
+
+             const newPosition = { lat: lat, lng: lng };
+
+             latitudeInput.value = lat.toFixed(7);
+             longitudeInput.value = lng.toFixed(7);
+
+             // Update marker position and ensure it's on the map
+             if (marker) {
+                 console.log("Updating marker position to:", newPosition); // Debug log
+                 marker.position = newPosition;
+                 marker.map = map; // Make sure marker is visible/added if it wasn't
+             } else {
+                 console.error("Marker object is not available in updateLocation!"); // Should not happen after init
+                 return; // Exit if no marker
+             }
+
+             // --- Center Map ---
+             if (map) {
+                 console.log("Centering map to:", newPosition); // Debug log
+                 map.setCenter(newPosition);
+                 map.setZoom(17); // Zoom in closer
+             } else {
+                 console.error("Map object is not available in updateLocation!"); // Should not happen after init
+             }
+
+
+            // --- InfoWindow and Address Handling ---
+            let addressToDisplay = prefilledAddress;
+
+            function setInfoWindowContent(address) {
+                console.log("setInfoWindowContent called with address:", address); // Debug log
+                if (address && infoWindow) {
+                    const contentString = `<div class="info-window-content">${address}</div>`;
+                    infoWindow.setContent(contentString);
+                    console.log("InfoWindow content set."); // Debug log
+                } else if (infoWindow) {
+                    infoWindow.close();
+                    infoWindow.setContent(null); // Clear content
+                    console.log("InfoWindow content cleared/closed."); // Debug log
+                }
+            }
+
+            // Decide whether to fetch or use prefilled address
+            if (fetchAddressIfNeeded && !prefilledAddress) {
+                console.log(`Workspaceing reverse geocode for: Lat=${lat}, Lng=${lng}`); // Debug log
+                geolocationStatusDiv.textContent = 'Getting address...';
+                geolocationStatusDiv.className = 'form-text text-info'; // Use info color
+                fetch(`/stores/api/google/reverse_geocode?lat=${lat}&lng=${lng}`)
+                    .then(response => {
+                        if (!response.ok) {
+                             // Include status text for better error understanding
+                             throw new Error(`HTTP error ${response.status} (${response.statusText})`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log("Reverse geocode response:", data); // Debug log
+                        if (data.address) {
+                            addressToDisplay = data.address;
+                            addressInput.value = addressToDisplay;
+                            geolocationStatusDiv.textContent = 'Address updated.';
+                            geolocationStatusDiv.className = 'form-text text-success';
+                        } else {
+                            addressInput.value = ''; // Clear address input if not found
+                            geolocationStatusDiv.textContent = 'Address not found.';
+                            geolocationStatusDiv.className = 'form-text text-warning';
+                        }
+                        setInfoWindowContent(addressToDisplay); // Update InfoWindow content *after* fetch
+                        setTimeout(() => { geolocationStatusDiv.textContent = ''; }, 5000);
+                    })
+                    .catch(error => {
+                        console.error('Reverse geocode fetch error:', error);
+                        geolocationStatusDiv.textContent = `Error getting address: ${error.message}`;
+                        geolocationStatusDiv.className = 'form-text text-danger';
+                        setInfoWindowContent(null); // Clear InfoWindow on error
+                    });
+            } else {
+                 // Use prefilledAddress or null (if neither fetching nor prefilled)
+                 console.log("Using prefilled address for InfoWindow (if available):", addressToDisplay); // Debug log
+                 if(prefilledAddress) {
+                     addressInput.value = prefilledAddress; // Ensure input is set
+                     // Optional: Add a status message for autocomplete success?
+                 }
+                 setInfoWindowContent(addressToDisplay); // Update InfoWindow immediately
+            }
+        } // End of updateLocation
+
+
+        // --- Geolocation Button Logic ---
+        useCurrentLocationButton.addEventListener('click', () => {
+            if (!navigator.geolocation) { /* ... */ return; }
+            geolocationStatusDiv.textContent = 'Getting location...';
+            geolocationStatusDiv.className = 'form-text text-info'; // Use info color
+            useCurrentLocationButton.disabled = true;
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    console.log("Geolocation Success:", position.coords); // Debug log
+                    useCurrentLocationButton.disabled = false;
+                    // IMPORTANT: Call updateLocation with true to fetch address
+                    updateLocation(position.coords.latitude, position.coords.longitude, null, true);
+                    searchInput.value = '';
+                },
+                (error) => {
+                    console.error("Geolocation Error:", error); // Debug log
+                    useCurrentLocationButton.disabled = false;
+                    geolocationStatusDiv.className = 'form-text text-danger';
+                    /* ... error switch case ... */
+                },
+                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 } // Increased timeout
+            );
+        });
+
+        // Prevent form submission on Enter in search input
+        searchInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') { event.preventDefault(); }
+        });
+
+    </script>
+
+</body>
+</html>
