@@ -1,0 +1,81 @@
+<% locals.pageTitle = typeof title !== 'undefined' ? title : 'Orders' %>
+
+<header class="py-3 px-6 border-b border-gray-200 bg-white shadow-sm flex-shrink-0">
+    <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold text-gray-800"><%= locals.pageTitle %></h2>
+
+        <%# --- THIS IS THE BUTTON --- %>
+        <%# It only shows if canCreateOrder is true %>
+        <% if (typeof canCreateOrder !== 'undefined' && canCreateOrder) { %>
+        <a href="/orders/new" class="inline-block px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700">
+            Create New Order
+        </a>
+        <% } %>
+        <%# --- END OF BUTTON --- %>
+
+    </div>
+</header>
+
+<section class="px-6 py-6 flex-1 overflow-y-auto">
+    <div class="bg-white border rounded-lg shadow-sm">
+        <div class="px-4 py-3 border-b">
+            <h3 class="text-base font-semibold text-gray-700">Order List</h3>
+            <%# Add filters/search later %>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left">
+                <thead class="bg-gray-50 border-b text-xs uppercase text-gray-500 tracking-wider">
+                    <tr>
+                        <th class="px-4 py-2 font-medium">Order ID</th>
+                        <th class="px-4 py-2 font-medium">Date</th>
+                        <% if (['admin', 'warehouse_owner'].includes(locals.loggedInUser.role)) { %>
+                            <th class="px-4 py-2 font-medium">Store</th>
+                        <% } %>
+                        <th class="px-4 py-2 font-medium">Customer</th>
+                        <th class="px-4 py-2 font-medium">Total</th>
+                        <th class="px-4 py-2 font-medium">Status</th>
+                        <th class="px-4 py-2 font-medium">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y text-sm text-gray-700">
+                    <% if (orders && orders.length > 0) { %>
+                        <% orders.forEach(order => { %>
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-4 py-3 font-mono text-xs"><%= order._id.toString().slice(-8) %>...</td> <%# Short ID %>
+                                <td class="px-4 py-3 whitespace-nowrap"><%= new Date(order.placedDate).toLocaleDateString() %></td>
+                                <% if (['admin', 'warehouse_owner'].includes(locals.loggedInUser.role)) { %>
+                                     <td class="px-4 py-3"><%= order.storeId?.storeName || 'N/A' %></td>
+                                <% } %>
+                                <td class="px-4 py-3"><%= order.customerId?.username || order.customerId?.email || 'N/A' %></td>
+                                <td class="px-4 py-3 text-right"><%= order.totalAmount.toFixed(2) %></td>
+                                <td class="px-4 py-3">
+                                    <% // --- Calculate status class ---
+                                       let statusClass = 'bg-gray-100 text-gray-800'; // Default
+                                       switch (order.orderStatus) {
+                                         case 'pending':   statusClass = 'bg-yellow-100 text-yellow-800'; break;
+                                         case 'confirmed': statusClass = 'bg-blue-100 text-blue-800'; break;
+                                         case 'shipped':   statusClass = 'bg-purple-100 text-purple-800'; break;
+                                         case 'delivered': statusClass = 'bg-green-100 text-green-800'; break;
+                                         case 'cancelled': statusClass = 'bg-red-100 text-red-800'; break;
+                                       }
+                                    %>
+                                    <% // --- Output the span with the calculated class --- %>
+                                    <span class="inline-block px-2 py-1 text-xs font-medium rounded-full capitalize <%= statusClass %>">
+                                        <%= order.orderStatus %>
+                                    </span>
+                                </td>
+                                <td class="px-4 py-3 whitespace-nowrap">
+                                    <a href="/orders/<%= order._id %>" class="text-blue-600 hover:text-blue-800 hover:underline text-xs font-medium">View Details</a>
+                                </td>
+                            </tr>
+                        <% }) %>
+                    <% } else { %>
+                        <tr><td colspan="7" class="text-center py-10 text-gray-500">No orders found matching your criteria.</td></tr>
+                    <% } %>
+                </tbody>
+            </table>
+        </div>
+        <%# Add Pagination later if needed %>
+    </div>
+</section>

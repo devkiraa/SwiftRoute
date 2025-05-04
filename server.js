@@ -22,11 +22,14 @@ if (!sessionSecret) {
 const indexRoutes = require('./routes/index');
 const storeRoutes = require('./routes/stores');
 const userRoutes = require('./routes/users');
+const warehouseRoutes = require('./routes/warehouses');
+const itemRoutes = require('./routes/items'); 
 // Require other routes as you create them:
 // const warehouseRoutes = require('./routes/warehouses');
 // const itemRoutes = require('./routes/items');
-// const orderRoutes = require('./routes/orders');
-// const adminRoutes = require('./routes/admin'); // If you separate admin routes
+const orderRoutes = require('./routes/orders');
+const reportingRoutes = require('./routes/reporting');
+const adminRoutes = require('./routes/admin'); // If you separate admin routes
 
 const app = express();
 
@@ -70,39 +73,48 @@ app.use(session({
 // Makes loggedInUser, companyDetails, and currentPath available in all templates (via res.locals)
 app.use(async (req, res, next) => {
   res.locals.currentPath = req.path; // For active sidebar links
+  // Initialize locals to null
+  res.locals.loggedInUser = null;
+  res.locals.companyDetails = null;
+  res.locals.storeDetails = null; // <-- Initialize storeDetails
 
   if (req.session && req.session.userId) {
     try {
-      // Fetch user and populate company name in one go
       const user = await mongoose.model('User').findById(req.session.userId)
-        .populate('companyId', 'companyName') // Select only companyName from Company
+        .populate('companyId', 'companyName') // Populate company name
         .lean();
 
       if (user) {
         res.locals.loggedInUser = user;
-        // companyDetails is the populated sub-document or null
-        res.locals.companyDetails = user.companyId;
-        // You could fetch storeDetails here too if needed globally often,
-        // but usually better to fetch in specific routes needing it.
-        // if (user.storeId) {
-        //   res.locals.storeDetails = await mongoose.model('Store').findById(user.storeId).lean();
-        // }
+        res.locals.companyDetails = user.companyId; // Populated company or null
+
+        // --- Attempt to fetch store details if user has storeId ---
+        if (user.storeId) {
+          try {
+             // Fetch store details if the user is associated with one
+             res.locals.storeDetails = await mongoose.model('Store')
+                                              .findById(user.storeId)
+                                              .select('storeName address') // Select fields needed globally
+                                              .lean();
+          } catch (storeErr) {
+               console.error(`Error fetching store details for storeId ${user.storeId}:`, storeErr);
+               // Proceed without storeDetails if store fetch fails
+               res.locals.storeDetails = null;
+          }
+        }
+        // --- End store details fetch ---
+
       } else {
-         // Invalid userId in session, clear it
-         console.warn(`Session contains userId ${req.session.userId}, but user not found in DB. Clearing session.`);
-         req.session.destroy(); // Use callback if needed
-         res.locals.loggedInUser = null;
-         res.locals.companyDetails = null;
+         console.warn(`Session has userId ${req.session.userId}, but user not found. Clearing session.`);
+         req.session.destroy(); // Logged out
       }
     } catch (err) {
-      console.error("Error fetching user/company details in global middleware:", err);
+      console.error("Error fetching user/company in global middleware:", err);
+      // Ensure locals are null on error
       res.locals.loggedInUser = null;
       res.locals.companyDetails = null;
+      res.locals.storeDetails = null;
     }
-  } else {
-    // No user in session
-    res.locals.loggedInUser = null;
-    res.locals.companyDetails = null;
   }
   next(); // Proceed to the next middleware/route
 });
@@ -112,11 +124,13 @@ app.use(async (req, res, next) => {
 app.use('/', indexRoutes);       // Handles /, /dashboard, /login, /logout, /register
 app.use('/stores', storeRoutes); // Handles /stores, /stores/new etc.
 app.use('/users', userRoutes);   // Handles /users, /users/new etc.
+app.use('/warehouses', warehouseRoutes);
 // Mount other routes as they are created:
 // app.use('/warehouses', warehouseRoutes);
-// app.use('/items', itemRoutes);
-// app.use('/orders', orderRoutes);
-// app.use('/admin', adminRoutes);
+app.use('/items', itemRoutes);
+app.use('/orders', orderRoutes);
+app.use('/reporting', reportingRoutes);
+app.use('/admin', adminRoutes);
 
 // --- Basic 404 Handler ---
 // Catch requests that don't match any routes above

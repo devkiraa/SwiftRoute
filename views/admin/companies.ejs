@@ -1,0 +1,52 @@
+<% locals.pageTitle = typeof title !== 'undefined' ? title : 'Manage Companies' %>
+
+<header class="py-3 px-6 border-b border-gray-200 bg-white shadow-sm flex-shrink-0">
+    <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold text-gray-800"><%= locals.pageTitle %></h2>
+        <a href="/admin/companies/new" class="inline-block px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700">
+            Add New Company
+        </a>
+    </div>
+</header>
+
+<section class="px-6 py-6 flex-1 overflow-y-auto">
+    <div class="bg-white border rounded-lg shadow-sm">
+        <div class="px-4 py-3 border-b">
+            <h3 class="text-base font-semibold text-gray-700">Registered Companies</h3>
+            <%# Add filters/search later %>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left">
+                <thead class="bg-gray-50 border-b text-xs uppercase text-gray-500 tracking-wider">
+                    <tr>
+                        <th class="px-4 py-2 font-medium">Company Name</th>
+                        <th class="px-4 py-2 font-medium">Contact Email</th>
+                        <th class="px-4 py-2 font-medium">Plan</th>
+                        <th class="px-4 py-2 font-medium">Registered</th>
+                        <th class="px-4 py-2 font-medium">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y text-sm text-gray-700">
+                    <% if (companies && companies.length > 0) { %>
+                        <% companies.forEach(company => { %>
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-4 py-3 font-medium text-gray-900"><%= company.companyName %></td>
+                                <td class="px-4 py-3"><%= company.contactEmail %></td>
+                                <td class="px-4 py-3 capitalize"><%= company.subscriptionPlan %></td>
+                                <td class="px-4 py-3 whitespace-nowrap"><%= new Date(company.createdDate).toLocaleDateString() %></td>
+                                <td class="px-4 py-3 whitespace-nowrap">
+                                    <a href="/admin/companies/<%= company._id %>/edit" class="text-blue-600 hover:text-blue-800 hover:underline text-xs font-medium">Edit</a>
+                                    <%# Add Delete form later %>
+                                </td>
+                            </tr>
+                        <% }) %>
+                    <% } else { %>
+                        <tr><td colspan="5" class="text-center py-10 text-gray-500">No companies found.</td></tr>
+                    <% } %>
+                </tbody>
+            </table>
+        </div>
+        <%# Add Pagination later if needed %>
+    </div>
+</section>

@@ -1,0 +1,323 @@
+<%# This variable will be used by the layout for the main heading %>
+<% locals.pageTitle = typeof title !== 'undefined' ? title : 'Add New Store' %>
+
+<header class="py-3 px-6 border-b border-gray-200 bg-white shadow-sm flex-shrink-0">
+    <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold text-gray-800"><%= locals.pageTitle %></h2>
+        <a href="/stores" class="inline-block px-3 py-1.5 border border-gray-300 text-xs font-medium text-gray-700 rounded-md hover:bg-gray-50">
+            Cancel
+         </a>
+    </div>
+</header>
+
+<section class="p-6 flex-1 overflow-y-auto">
+    <div class="max-w-4xl mx-auto"> <%# Limit form width %>
+
+        <% if (typeof error !== 'undefined' && error) { %>
+        <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+            <strong class="font-bold">Error!</strong>
+            <span class="block sm:inline"><%= error %></span>
+        </div>
+        <% } %>
+
+        <form action="/stores" method="POST" id="store-form" class="bg-white p-6 border rounded-lg shadow-sm">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                <div>
+                    <h3 class="text-lg font-medium leading-6 text-gray-900 mb-4 border-b pb-2">Store Details</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label for="storeName" class="block text-sm font-medium text-gray-700 mb-1">Store Name <span class="text-red-500">*</span></label>
+                            <input type="text" id="storeName" name="storeName" value="<%= typeof formData !== 'undefined' ? formData.storeName : '' %>" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        </div>
+                         <div>
+                            <label for="phone" class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                            <input type="tel" id="phone" name="phone" value="<%= typeof formData !== 'undefined' ? formData.phone : '' %>" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        </div>
+                         <div>
+                            <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                            <input type="email" id="email" name="email" value="<%= typeof formData !== 'undefined' ? formData.email : '' %>" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        </div>
+                        <div>
+                            <label for="deliveryWindow" class="block text-sm font-medium text-gray-700 mb-1">Delivery Window</label>
+                            <input type="text" id="deliveryWindow" name="deliveryWindow" placeholder="e.g., 9:00-17:00" value="<%= typeof formData !== 'undefined' ? formData.deliveryWindow : '' %>" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 class="text-lg font-medium leading-6 text-gray-900 mb-4 border-b pb-2">Location</h3>
+                     <div class="space-y-4">
+                        <div>
+                             <label for="address-search" class="block text-sm font-medium text-gray-700 mb-1">Search Address</label>
+                             <input type="text" id="address-search" placeholder="Start typing address..." class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                             <%# Google Autocomplete will attach here %>
+                        </div>
+                         <div>
+                             <label for="address" class="block text-sm font-medium text-gray-700 mb-1">Full Address (Confirm / Enter Manually) <span class="text-red-500">*</span></label>
+                             <input type="text" id="address" name="address" value="<%= typeof formData !== 'undefined' ? formData.address : '' %>" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                         </div>
+                        <div>
+                             <label class="block text-sm font-medium text-gray-700 mb-1">Select Location on Map</label>
+                             <button type="button" id="use-current-location" class="mb-2 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded shadow-sm text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
+                                 <svg class="-ml-0.5 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"> <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd" /> </svg>
+                                 Use Current Location
+                             </button>
+                             <div id="map" class="w-full h-72 rounded-md border border-gray-300 bg-gray-200"></div> <%# Adjusted height %>
+                             <input type="hidden" id="latitude" name="latitude" value="<%= typeof formData !== 'undefined' ? formData.latitude : '' %>">
+                             <input type="hidden" id="longitude" name="longitude" value="<%= typeof formData !== 'undefined' ? formData.longitude : '' %>">
+                             <div id="geolocation-status" class="mt-1 text-xs text-gray-500"></div>
+                        </div>
+                    </div>
+                 </div>
+            </div>
+
+            <div class="mt-6 pt-4 border-t border-gray-200 flex justify-end">
+                 <a href="/stores" class="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 mr-3">Cancel</a>
+                <button type="submit" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    Add Store
+                </button>
+            </div>
+        </form>
+    </div>
+</section>
+
+
+<%# -------- Google Maps Script -------- %>
+<%# This script tag will likely be moved to the end of the <body> by express-ejs-layouts %>
+<%# Ensure googleMapsApiKey is passed from the route %>
+<script src="https://maps.googleapis.com/maps/api/js?key=<%= typeof googleMapsApiKey !== 'undefined' ? googleMapsApiKey : '' %>&libraries=places,marker&callback=initializeGoogleMap" async defer></script>
+<script>
+    let map;
+    let marker;
+    let autocomplete;
+    let infoWindow;
+
+    const latitudeInput = document.getElementById('latitude');
+    const longitudeInput = document.getElementById('longitude');
+    const addressInput = document.getElementById('address');
+    const searchInput = document.getElementById('address-search');
+    const useCurrentLocationButton = document.getElementById('use-current-location');
+    const geolocationStatusDiv = document.getElementById('geolocation-status');
+
+    const defaultLocation = { lat: 12.9716, lng: 77.5946 }; // Bangalore
+    const initialLat = parseFloat(latitudeInput.value) || defaultLocation.lat;
+    const initialLng = parseFloat(longitudeInput.value) || defaultLocation.lng;
+    const initialZoom = (latitudeInput.value && longitudeInput.value) ? 16 : 12;
+
+    // *** Google Maps Initialization Function (KEEP AS IS) ***
+    async function initializeGoogleMap() {
+        try {
+            console.log("Attempting to load Google Maps libraries...");
+            const { Map } = await google.maps.importLibrary("maps");
+            const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
+            const { InfoWindow } = await google.maps.importLibrary("maps");
+            console.log("Google Maps Libraries Loaded");
+
+            map = new Map(document.getElementById("map"), {
+                center: { lat: initialLat, lng: initialLng }, // Use initial coords
+                zoom: initialZoom,
+                mapId: "SWIFTROUTE_MAP_ID", // Optional
+                mapTypeControl: false
+            });
+            console.log("Map Initialized");
+
+            infoWindow = new InfoWindow();
+            console.log("InfoWindow Initialized");
+
+            autocomplete = new google.maps.places.Autocomplete(searchInput, {
+                 fields: ["formatted_address", "geometry", "name"],
+                 componentRestrictions: { country: "in" }
+            });
+            autocomplete.bindTo("bounds", map);
+            console.log("Autocomplete Initialized");
+
+            marker = new AdvancedMarkerElement({
+                 map: map,
+                 // Set initial position ONLY if lat/lng values exist on load
+                 position: (latitudeInput.value && longitudeInput.value) ? { lat: initialLat, lng: initialLng } : null,
+                 gmpDraggable: true,
+            });
+            console.log("Marker Initialized (position may be null initially)");
+
+            // --- Event Listeners ---
+            autocomplete.addListener("place_changed", () => {
+                 console.log("--- Autocomplete place_changed event fired ---"); // Log: Event Start
+                 const place = autocomplete.getPlace();
+                 console.log("Selected Place:", place); // Log: Place Object
+
+                 if (!place.geometry || !place.geometry.location) {
+                     console.warn("Autocomplete place is missing geometry or location.");
+                     // Optionally inform the user:
+                     // geolocationStatusDiv.textContent = "Could not get location details for selected address.";
+                     // geolocationStatusDiv.className = 'text-xs text-yellow-600 mt-1';
+                     return;
+                 }
+
+                 // Ensure map object exists before using it
+                 if (!map) {
+                     console.error("Map object not available in place_changed listener.");
+                     return;
+                 }
+
+                 // Center map
+                 if (place.geometry.viewport) {
+                     console.log("Fitting map to viewport:", place.geometry.viewport); // Log: Viewport
+                     map.fitBounds(place.geometry.viewport);
+                 } else {
+                     console.log("Setting map center/zoom:", place.geometry.location); // Log: Location
+                     map.setCenter(place.geometry.location);
+                     map.setZoom(17);
+                 }
+
+                 // Call updateLocation
+                 const lat = place.geometry.location.lat();
+                 const lng = place.geometry.location.lng();
+                 console.log(`Calling updateLocation from Autocomplete. Lat: ${lat}, Lng: ${lng}, Address: ${place.formatted_address}`); // Log: Update Call
+                 updateLocation(lat, lng, place.formatted_address, false); // Pass address, don't fetch again
+            });
+
+            map.addListener("click", (e) => {
+                if (e.latLng) {
+                    console.log("--- Map Clicked ---"); // Log: Event Start
+                    const lat = e.latLng.lat();
+                    const lng = e.latLng.lng();
+                    console.log(`Calling updateLocation from Map Click. Lat: ${lat}, Lng: ${lng}`); // Log: Update Call
+                    updateLocation(lat, lng, null, true); // Fetch address
+                }
+            });
+
+            marker.addListener('dragend', () => {
+                 if (marker.position) {
+                     console.log("--- Marker Dragged ---"); // Log: Event Start
+                     const lat = marker.position.lat;
+                     const lng = marker.position.lng;
+                     console.log(`Calling updateLocation from Marker Drag. Lat: ${lat}, Lng: ${lng}`); // Log: Update Call
+                     updateLocation(lat, lng, null, true); // Fetch address
+                 }
+            });
+
+            marker.addListener('click', () => {
+                 const content = infoWindow.getContent();
+                 console.log("--- Marker Clicked --- InfoWindow Content:", content ? content : "(empty)"); // Log: Event Start
+                 if (content) {
+                     infoWindow.open({ map: map, anchor: marker });
+                     console.log("InfoWindow Opened.");
+                 }
+            });
+
+             // Set initial state if form data exists (editing or validation error)
+             if (latitudeInput.value && longitudeInput.value) {
+                 console.log("Setting initial location from existing input values."); // Log: Initial State
+                 const addr = addressInput.value || null;
+                 updateLocation(initialLat, initialLng, addr, !addr); // Fetch addr if not present
+             } else {
+                  console.log("No initial coordinates found in form."); // Log: Initial State
+             }
+
+        } catch(error) {
+             console.error("Error during Google Maps initialization:", error);
+             geolocationStatusDiv.textContent = 'Error loading map components.';
+             geolocationStatusDiv.className = 'text-xs text-red-600 mt-1';
+        }
+    } // End of initializeGoogleMap
+
+
+    // *** Function to Update Location (KEEP AS IS from previous step) ***
+    function updateLocation(lat, lng, prefilledAddress = null, fetchAddressIfNeeded = false) {
+        console.log(">>> updateLocation START:", { lat, lng, prefilledAddress, fetchAddressIfNeeded });
+        if (isNaN(lat) || isNaN(lng)) { console.error("updateLocation received invalid coords:", lat, lng); return; }
+
+        const newPosition = { lat: lat, lng: lng };
+        latitudeInput.value = lat.toFixed(7);
+        longitudeInput.value = lng.toFixed(7);
+
+        if (!marker) { console.error("Marker object not available!"); return; }
+        console.log("Updating marker position to:", newPosition);
+        marker.position = newPosition;
+        marker.map = map; // Ensure it's visible
+
+        if (!map) { console.error("Map object not available!"); return; }
+        console.log("Setting map center/zoom for new position.");
+        map.setCenter(newPosition);
+        map.setZoom(17);
+
+        let addressToDisplay = prefilledAddress;
+        function setInfoWindowContent(address) {
+            console.log("Setting InfoWindow content to:", address ? `"${address}"` : "(null)");
+            if (address && infoWindow) { infoWindow.setContent(`<div class="info-window-content">${address}</div>`); }
+            else if (infoWindow) { infoWindow.close(); infoWindow.setContent(null); }
+        }
+
+        if (fetchAddressIfNeeded && !prefilledAddress) {
+            console.log(`Workspaceing reverse geocode for: Lat=${lat}, Lng=${lng}`);
+            geolocationStatusDiv.textContent = 'Getting address...';
+            geolocationStatusDiv.className = 'text-xs text-gray-500 mt-1';
+            fetch(`/stores/api/google/reverse_geocode?lat=${lat}&lng=${lng}`)
+                .then(response => { if (!response.ok) { throw new Error(`HTTP error ${response.status}`); } return response.json(); })
+                .then(data => {
+                    console.log("Reverse geocode response:", data);
+                    if (data.address) {
+                        addressToDisplay = data.address; addressInput.value = addressToDisplay;
+                        geolocationStatusDiv.textContent = 'Address updated.'; geolocationStatusDiv.className = 'text-xs text-green-600 mt-1';
+                    } else {
+                        addressInput.value = ''; geolocationStatusDiv.textContent = 'Address not found.'; geolocationStatusDiv.className = 'text-xs text-yellow-600 mt-1';
+                    }
+                    setInfoWindowContent(addressToDisplay);
+                    setTimeout(() => { geolocationStatusDiv.textContent = ''; }, 5000);
+                })
+                .catch(error => {
+                    console.error('Reverse geocode fetch error:', error);
+                    geolocationStatusDiv.textContent = `Error getting address.`; geolocationStatusDiv.className = 'text-xs text-red-600 mt-1';
+                    setInfoWindowContent(null);
+                });
+        } else {
+            console.log("Using prefilled address (if available) for InfoWindow:", addressToDisplay);
+            if(prefilledAddress) { addressInput.value = prefilledAddress; }
+            setInfoWindowContent(addressToDisplay);
+        }
+        console.log("<<< updateLocation END");
+    } // End of updateLocation
+
+
+    // --- Geolocation Button Logic ---
+    useCurrentLocationButton.addEventListener('click', () => {
+        console.log("--- 'Use Current Location' Button Clicked ---"); // Log: Event Start
+        if (!navigator.geolocation) {
+            console.error("Geolocation not supported by browser.");
+            geolocationStatusDiv.textContent = 'Geolocation not supported.';
+            geolocationStatusDiv.className = 'text-xs text-red-600 mt-1'; return;
+        }
+        geolocationStatusDiv.textContent = 'Requesting location... (Check browser prompt)';
+        geolocationStatusDiv.className = 'text-xs text-gray-500 mt-1';
+        useCurrentLocationButton.disabled = true;
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => { // Success
+                console.log("Geolocation Success:", position.coords);
+                useCurrentLocationButton.disabled = false;
+                const lat = position.coords.latitude;
+                const lng = position.coords.longitude;
+                console.log(`Calling updateLocation from Geolocation. Lat: ${lat}, Lng: ${lng}`); // Log: Update Call
+                updateLocation(lat, lng, null, true); // Fetch address
+                searchInput.value = ''; // Clear search input
+            },
+            (error) => { // Error
+                console.error("Geolocation Error Code:", error.code, "Message:", error.message);
+                useCurrentLocationButton.disabled = false;
+                geolocationStatusDiv.className = 'text-xs text-red-600 mt-1';
+                switch(error.code) {
+                    case error.PERMISSION_DENIED: geolocationStatusDiv.textContent = "Permission denied."; break;
+                    case error.POSITION_UNAVAILABLE: geolocationStatusDiv.textContent = "Location unavailable."; break;
+                    case error.TIMEOUT: geolocationStatusDiv.textContent = "Request timed out."; break;
+                    default: geolocationStatusDiv.textContent = "Unknown location error."; break;
+                }
+            },
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
+    });
+
+    // --- Other Listeners ---
+    searchInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); } });
+
+</script>

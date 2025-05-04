@@ -1,0 +1,100 @@
+<% locals.pageTitle = typeof title !== 'undefined' ? title : 'Create Order' %>
+<% const isEditing = typeof order !== 'undefined' && order && order._id; %>
+
+<header class="py-3 px-6 border-b border-gray-200 bg-white shadow-sm flex-shrink-0">
+    <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold text-gray-800"><%= locals.pageTitle %></h2>
+        <a href="/orders" class="inline-block px-3 py-1.5 border border-gray-300 text-xs font-medium text-gray-700 rounded-md hover:bg-gray-50">
+            Cancel
+        </a>
+    </div>
+</header>
+
+<section class="p-6 flex-1 overflow-y-auto">
+    <div class="max-w-4xl mx-auto">
+
+        <% if (typeof error !== 'undefined' && error) { %>
+        <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+            <strong class="font-bold">Error!</strong>
+            <span class="block sm:inline"><%= error %></span>
+        </div>
+        <% } %>
+
+        <form action="/orders" method="POST" id="order-form" class="bg-white p-6 border rounded-lg shadow-sm space-y-6">
+
+            <%# --- Store and Warehouse Selection --- %>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                 <div>
+                    <label for="storeId" class="block text-sm font-medium text-gray-700 mb-1">Target Store <span class="text-red-500">*</span></label>
+                    <select id="storeId" name="storeId" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        <option value="">-- Select Store --</option>
+                         <% if (typeof stores !== 'undefined') { stores.forEach(s => { %>
+                            <option value="<%= s._id %>" <%= (typeof order !== 'undefined' && order.storeId == s._id) ? 'selected' : '' %>><%= s.storeName %></option>
+                         <% }) } %>
+                    </select>
+                     <p class="mt-1 text-xs text-gray-500">Delivery address will be this store's address.</p> <%# Added note %>
+                </div>
+                 <div>
+                    <label for="warehouseId" class="block text-sm font-medium text-gray-700 mb-1">Fulfilling Warehouse <span class="text-red-500">*</span></label>
+                    <select id="warehouseId" name="warehouseId" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        <option value="">-- Select Warehouse --</option>
+                         <% if (typeof warehouses !== 'undefined') { warehouses.forEach(wh => { %>
+                            <option value="<%= wh._id %>" <%= (typeof order !== 'undefined' && order.warehouseId == wh._id) ? 'selected' : '' %>><%= wh.name %></option>
+                         <% }) } %>
+                    </select>
+                    <p class="mt-1 text-xs text-gray-500">Items must be available in this warehouse.</p>
+                </div>
+            </div>
+
+            <%# --- Customer Details --- %>
+            <fieldset class="border p-3 rounded">
+                <legend class="text-sm font-medium px-1">Recipient/Customer Info (at Store)</legend> <%# Clarified title %>
+                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                     <div>
+                        <label for="customerName" class="block text-xs font-medium text-gray-700 mb-1">Recipient Name <span class="text-red-500">*</span></label> <%# Changed label %>
+                        <input type="text" id="customerName" name="customerName" value="<%= typeof order !== 'undefined' ? order.customerName : '' %>" required class="block w-full px-3 py-1.5 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                    </div>
+                     <div>
+                        <label for="customerPhone" class="block text-xs font-medium text-gray-700 mb-1">Recipient Phone</label> <%# Changed label %>
+                        <input type="tel" id="customerPhone" name="customerPhone" value="<%= typeof order !== 'undefined' ? order.customerPhone : '' %>" class="block w-full px-3 py-1.5 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                    </div>
+                 </div>
+                 <p class="mt-2 text-xs text-gray-500">Enter details of who will receive the order at the store.</p>
+            </fieldset>
+
+            <%# --- Shipping Address Field REMOVED --- %>
+
+            <%# --- Order Items --- %>
+            <fieldset class="border p-3 rounded">
+                <legend class="text-sm font-medium px-1">Order Items</legend>
+                 <div id="order-items-container" class="space-y-3 mt-2">
+                    <div class="flex items-end space-x-2 order-item-row">
+                         <div class="flex-grow"> <label class="block text-xs font-medium text-gray-700 mb-1">Item <span class="text-red-500">*</span></label> <select name="itemIds[]" required class="item-select mt-1 block w-full px-3 py-1.5 border ..."> <option value="">-- Select Item --</option> <% if (typeof items !== 'undefined') { items.forEach(item => { %> <option value="<%= item._id %>" data-price="<%= item.price %>" data-sku="<%= item.sku %>" data-stock="<%= item.quantity %>" data-warehouse="<%= item.warehouseId?.name || 'N/A' %>"><%= item.name %> (<%= item.sku %>) - <%= item.warehouseId?.name %> (Stock: <%= item.quantity %>)</option> <% }) } %> </select> </div>
+                         <div class="w-24"> <label class="block text-xs font-medium text-gray-700 mb-1">Quantity <span class="text-red-500">*</span></label> <input type="number" name="quantities[]" value="1" required min="1" class="item-quantity mt-1 block w-full px-3 py-1.5 border ..."> </div>
+                         <button type="button" class="remove-item-btn px-2 py-1.5 border border-red-300 ..." onclick="removeItemRow(this)">Remove</button>
+                     </div>
+                 </div>
+                 <button type="button" id="add-item-btn" class="mt-3 px-3 py-1.5 border border-dashed ..."> + Add Another Item </button>
+             </fieldset>
+
+            <div class="mt-6 pt-4 border-t border-gray-200 flex justify-end">
+                 <a href="/orders" class="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 mr-3">Cancel</a>
+                <button type="submit" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    Create Order
+                </button>
+            </div>
+        </form>
+    </div>
+</section>
+
+<%# --- REMOVED Google Maps Script tag for address autocomplete --- %>
+
+<%# --- Client-side JS for dynamic items (Keep this script) --- %>
+<script>
+    const availableItems = <%- JSON.stringify(items || []) %>;
+    function createItemOptionsHtml() { /* ... keep implementation ... */ }
+    function addItemRow() { /* ... keep implementation ... */ }
+    function removeItemRow(button) { /* ... keep implementation ... */ }
+    document.getElementById('add-item-btn').addEventListener('click', addItemRow);
+    // Optional stock checking logic can remain commented out or be implemented later
+</script>
