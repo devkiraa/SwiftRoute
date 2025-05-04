@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title><%= typeof title !== 'undefined' ? title : 'SwiftRoute Dashboard' %></title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"/>
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .dropdown-menu { transition: opacity 0.2s ease-in-out, visibility 0.2s ease-in-out; visibility: hidden; opacity: 0; z-index: 50; }
+    .dropdown-menu.show { visibility: visible; opacity: 1; }
+    button, a { user-select: none; }
+    /* Basic active link style */
+    .sidebar-link-active {
+        background-color: #3b82f6; /* bg-blue-600 */
+        color: white;
+        font-weight: 500; /* medium */
+    }
+    .sidebar-link-active svg {
+        color: white;
+    }
+  </style>
+</head>
+<body class="bg-gray-50">
+
+  <div class="flex min-h-screen">
+
+    <aside class="w-64 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
+      <div class="px-6 py-4 border-b">
+        <a href="/dashboard" class="text-xl font-bold tracking-tight text-gray-800 hover:text-blue-600">SwiftRoute</a>
+      </div>
+      <nav class="flex-1 px-4 pt-4 space-y-1 overflow-y-auto">
+        <% if (locals.loggedInUser) { %>
+            <a href="/dashboard" class="flex items-center space-x-3 px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= currentPath === '/dashboard' ? 'sidebar-link-active' : 'text-gray-700' %>">
+                <svg class="w-5 h-5 <%= currentPath === '/dashboard' ? 'text-white' : 'text-gray-400' %>" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M9.293 2.293a1 1 0 011.414 0l7 7A1 1 0 0117 11h-1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-3a1 1 0 00-1-1H9a1 1 0 00-1 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-6H3a1 1 0 01-.707-1.707l7-7z" clip-rule="evenodd"></path></svg>
+                <span>Home</span>
+             </a>
+
+             <% if (loggedInUser.role === 'warehouse_owner') { %>
+                 <a href="/warehouses" class="flex items-center space-x-3 px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= currentPath.startsWith('/warehouses') ? 'sidebar-link-active' : 'text-gray-700' %>"> <svg class="w-5 h-5 <%= currentPath.startsWith('/warehouses') ? 'text-white' : 'text-gray-400' %>" fill="currentColor" viewBox="0 0 20 20"><path d="M2 5a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V5zm2-1a1 1 0 00-1 1v2h14V5a1 1 0 00-1-1H4zM3 9v7a1 1 0 001 1h12a1 1 0 001-1V9H3z"></path></svg> <span>Warehouses</span> </a>
+                 <a href="/stores" class="flex items-center space-x-3 px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= currentPath.startsWith('/stores') ? 'sidebar-link-active' : 'text-gray-700' %>"> <svg class="w-5 h-5 <%= currentPath.startsWith('/stores') ? 'text-white' : 'text-gray-400' %>" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10.496 2.132a1 1 0 00-.992 0l-7 4A1 1 0 003 8v8a1 1 0 001 1h3v-4a1 1 0 011-1h2a1 1 0 011 1v4h3a1 1 0 001-1V8a1 1 0 00-.504-.868l-7-4zM16 18H4v-8.134l6-3.429 6 3.43V18z" clip-rule="evenodd"></path></svg> <span>Stores</span> </a>
+                 <a href="/stores/new" class="flex items-center space-x-3 px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= currentPath === '/stores/new' ? 'sidebar-link-active' : 'text-gray-700' %>"> <svg class="w-5 h-5 <%= currentPath === '/stores/new' ? 'text-white' : 'text-gray-400' %>" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-11.25a.75.75 0 00-1.5 0v2.5h-2.5a.75.75 0 000 1.5h2.5v2.5a.75.75 0 001.5 0v-2.5h2.5a.75.75 0 000-1.5h-2.5v-2.5z" clip-rule="evenodd"></path></svg> <span>Add New Store</span> </a>
+                 <a href="/items" class="flex items-center space-x-3 px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= currentPath.startsWith('/items') ? 'sidebar-link-active' : 'text-gray-700' %>"> <svg class="w-5 h-5 <%= currentPath.startsWith('/items') ? 'text-white' : 'text-gray-400' %>" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"></path></svg> <span>Inventory</span> </a>
+                 <a href="/orders" class="flex items-center space-x-3 px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= currentPath.startsWith('/orders') ? 'sidebar-link-active' : 'text-gray-700' %>"> <svg class="w-5 h-5 <%= currentPath.startsWith('/orders') ? 'text-white' : 'text-gray-400' %>" fill="currentColor" viewBox="0 0 20 20"><path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM5 11a1 1 0 100 2h4a1 1 0 100-2H5z"></path><path fill-rule="evenodd" d="M2 1a1 1 0 00-1 1v12a1 1 0 001 1h12a1 1 0 001-1V2a1 1 0 00-1-1H2zm12 1H2v12h12V2z" clip-rule="evenodd"></path></svg> <span>Orders (Company)</span> </a>
+                 <a href="/users" class="flex items-center space-x-3 px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= currentPath.startsWith('/users') ? 'sidebar-link-active' : 'text-gray-700' %>"> <svg class="w-5 h-5 <%= currentPath.startsWith('/users') ? 'text-white' : 'text-gray-400' %>" fill="currentColor" viewBox="0 0 20 20"><path d="M7 8a3 3 0 100-6 3 3 0 000 6zM14.5 9a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM1.25 15a6.75 6.75 0 0113.5 0h3.25a.75.75 0 010 1.5H.75a.75.75 0 010-1.5h.5zM20 16.75a.75.75 0 01-.75.75h-.75a5.25 5.25 0 00-10.5 0h-.75a.75.75 0 010-1.5h.25a6.75 6.75 0 0113.5 0h.25a.75.75 0 01.75.75z"></path></svg> <span>Users</span> </a>
+                 <a href="/reporting" class="flex items-center space-x-3 px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= currentPath.startsWith('/reporting') ? 'sidebar-link-active' : 'text-gray-700' %>"> <svg class="w-5 h-5 <%= currentPath.startsWith('/reporting') ? 'text-white' : 'text-gray-400' %>" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5 3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V5a2 2 0 00-2-2H5zm3 1a1 1 0 000 2h2a1 1 0 100-2H8zm-1 4a1 1 0 011-1h4a1 1 0 110 2H8a1 1 0 01-1-1zm1 4a1 1 0 100 2h1a1 1 0 100-2H8z" clip-rule="evenodd"></path></svg> <span>Reporting</span> </a>
+            <% } else if (loggedInUser.role === 'store_owner') { %>
+                 <a href="/orders" class="flex items-center space-x-3 px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= currentPath.startsWith('/orders') ? 'sidebar-link-active' : 'text-gray-700' %>"> <svg class="w-5 h-5 <%= currentPath.startsWith('/orders') ? 'text-white' : 'text-gray-400' %>" fill="currentColor" viewBox="0 0 20 20"><path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM5 11a1 1 0 100 2h4a1 1 0 100-2H5z"></path><path fill-rule="evenodd" d="M2 1a1 1 0 00-1 1v12a1 1 0 001 1h12a1 1 0 001-1V2a1 1 0 00-1-1H2zm12 1H2v12h12V2z" clip-rule="evenodd"></path></svg> <span>Orders (My Store)</span> </a>
+                 <a href="/customers" class="flex items-center space-x-3 px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= currentPath.startsWith('/customers') ? 'sidebar-link-active' : 'text-gray-700' %>"> <svg class="w-5 h-5 <%= currentPath.startsWith('/customers') ? 'text-white' : 'text-gray-400' %>" fill="currentColor" viewBox="0 0 20 20"><path d="M7 8a3 3 0 100-6 3 3 0 000 6zM14.5 9a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM1.25 15a6.75 6.75 0 0113.5 0h3.25a.75.75 0 010 1.5H.75a.75.75 0 010-1.5h.5zM20 16.75a.75.75 0 01-.75.75h-.75a5.25 5.25 0 00-10.5 0h-.75a.75.75 0 010-1.5h.25a6.75 6.75 0 0113.5 0h.25a.75.75 0 01.75.75z"></path></svg> <span>Customers</span> </a>
+                 <a href="/items/store" class="flex items-center space-x-3 px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= currentPath.startsWith('/items/store') ? 'sidebar-link-active' : 'text-gray-700' %>"> <svg class="w-5 h-5 <%= currentPath.startsWith('/items/store') ? 'text-white' : 'text-gray-400' %>" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"></path></svg> <span>Inventory</span> </a>
+                 <a href="/users/store" class="flex items-center space-x-3 px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= currentPath.startsWith('/users/store') ? 'sidebar-link-active' : 'text-gray-700' %>"> <svg class="w-5 h-5 <%= currentPath.startsWith('/users/store') ? 'text-white' : 'text-gray-400' %>" fill="currentColor" viewBox="0 0 20 20"><path d="M7 8a3 3 0 100-6 3 3 0 000 6zM14.5 9a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM1.25 15a6.75 6.75 0 0113.5 0h3.25a.75.75 0 010 1.5H.75a.75.75 0 010-1.5h.5zM20 16.75a.75.75 0 01-.75.75h-.75a5.25 5.25 0 00-10.5 0h-.75a.75.75 0 010-1.5h.25a6.75 6.75 0 0113.5 0h.25a.75.75 0 01.75.75z"></path></svg> <span>Employees</span> </a>
+                 <a href="/reporting/store" class="flex items-center space-x-3 px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= currentPath.startsWith('/reporting/store') ? 'sidebar-link-active' : 'text-gray-700' %>"> <svg class="w-5 h-5 <%= currentPath.startsWith('/reporting/store') ? 'text-white' : 'text-gray-400' %>" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5 3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V5a2 2 0 00-2-2H5zm3 1a1 1 0 000 2h2a1 1 0 100-2H8zm-1 4a1 1 0 011-1h4a1 1 0 110 2H8a1 1 0 01-1-1zm1 4a1 1 0 100 2h1a1 1 0 100-2H8z" clip-rule="evenodd"></path></svg> <span>Reporting</span> </a>
+             <% } else if (loggedInUser.role === 'employee') { %>
+                  <a href="/orders" class="flex items-center space-x-3 px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= currentPath.startsWith('/orders') ? 'sidebar-link-active' : 'text-gray-700' %>"> <svg class="w-5 h-5 <%= currentPath.startsWith('/orders') ? 'text-white' : 'text-gray-400' %>" fill="currentColor" viewBox="0 0 20 20"><path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM5 11a1 1 0 100 2h4a1 1 0 100-2H5z"></path><path fill-rule="evenodd" d="M2 1a1 1 0 00-1 1v12a1 1 0 001 1h12a1 1 0 001-1V2a1 1 0 00-1-1H2zm12 1H2v12h12V2z" clip-rule="evenodd"></path></svg> <span>Orders</span> </a>
+                  <a href="/customers" class="flex items-center space-x-3 px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= currentPath.startsWith('/customers') ? 'sidebar-link-active' : 'text-gray-700' %>"> <svg class="w-5 h-5 <%= currentPath.startsWith('/customers') ? 'text-white' : 'text-gray-400' %>" fill="currentColor" viewBox="0 0 20 20"><path d="M7 8a3 3 0 100-6 3 3 0 000 6zM14.5 9a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM1.25 15a6.75 6.75 0 0113.5 0h3.25a.75.75 0 010 1.5H.75a.75.75 0 010-1.5h.5zM20 16.75a.75.75 0 01-.75.75h-.75a5.25 5.25 0 00-10.5 0h-.75a.75.75 0 010-1.5h.25a6.75 6.75 0 0113.5 0h.25a.75.75 0 01.75.75z"></path></svg> <span>Customers</span> </a>
+                  <a href="/items/store" class="flex items-center space-x-3 px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= currentPath.startsWith('/items/store') ? 'sidebar-link-active' : 'text-gray-700' %>"> <svg class="w-5 h-5 <%= currentPath.startsWith('/items/store') ? 'text-white' : 'text-gray-400' %>" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"></path></svg> <span>Inventory</span> </a>
+             <% } else if (loggedInUser.role === 'delivery_partner') { %>
+                   <a href="/deliveries/my" class="flex items-center space-x-3 px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= currentPath.startsWith('/deliveries/my') ? 'sidebar-link-active' : 'text-gray-700' %>"> <svg class="w-5 h-5 <%= currentPath.startsWith('/deliveries/my') ? 'text-white' : 'text-gray-400' %>" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"></path></svg> <span>My Deliveries</span> </a>
+                   <a href="/deliveries/map" class="flex items-center space-x-3 px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= currentPath.startsWith('/deliveries/map') ? 'sidebar-link-active' : 'text-gray-700' %>"> <svg class="w-5 h-5 <%= currentPath.startsWith('/deliveries/map') ? 'text-white' : 'text-gray-400' %>" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M12.586 4.586a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0l-4-4a2 2 0 010-2.828l3-3a2 2 0 112.828 2.828L9.414 7l3.172-3.172z" clip-rule="evenodd"></path><path fill-rule="evenodd" d="M4.879 11.121a2 2 0 010 2.828l-3 3a2 2 0 01-2.828-2.828l3-3a2 2 0 012.828 0zM15.121 4.879a2 2 0 012.828 0l3 3a2 2 0 01-2.828 2.828l-3-3a2 2 0 010-2.828zM6.586 12.586a2 2 0 00-2.828 0l-3 3a2 2 0 102.828 2.828l3-3a2 2 0 000-2.828z" clip-rule="evenodd"></path></svg> <span>Route Map</span> </a>
+             <% } else if (loggedInUser.role === 'admin') { %>
+                   <a href="/admin/companies" class="flex items-center space-x-3 px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= currentPath.startsWith('/admin/companies') ? 'sidebar-link-active' : 'text-gray-700' %>"> <svg class="w-5 h-5 <%= currentPath.startsWith('/admin/companies') ? 'text-white' : 'text-gray-400' %>" fill="currentColor" viewBox="0 0 20 20"><path d="M10.75 1.5a.75.75 0 00-1.5 0v2.438c-.574.12-1.1.328-1.57.604a.75.75 0 00-.66 1.342 10.09 10.09 0 017.46 0 .75.75 0 00-.66-1.342 9.07 9.07 0 00-1.57-.604V1.5zM3.75 6a.75.75 0 000 1.5h12.5a.75.75 0 000-1.5H3.75zM2.817 9.375A.75.75 0 002 10.25v4.5c0 .414.336.75.75.75h.498a.75.75 0 00.684-.43 8.57 8.57 0 001.64-3.753.75.75 0 00-.674-.817H2.817zm14.366 0h-.07a.75.75 0 00-.674.817 8.57 8.57 0 001.64 3.753.75.75 0 00.684.43h.498a.75.75 0 00.75-.75v-4.5a.75.75 0 00-1.433-.875zM6.75 11.75a.75.75 0 00-1.5 0v3c0 .414.336.75.75.75h7.5a.75.75 0 00.75-.75v-3a.75.75 0 00-1.5 0v2.25H6.75V11.75z"></path></svg> <span>Companies</span> </a>
+                   <a href="/admin/users" class="flex items-center space-x-3 px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= currentPath.startsWith('/admin/users') ? 'sidebar-link-active' : 'text-gray-700' %>"> <svg class="w-5 h-5 <%= currentPath.startsWith('/admin/users') ? 'text-white' : 'text-gray-400' %>" fill="currentColor" viewBox="0 0 20 20"><path d="M7 8a3 3 0 100-6 3 3 0 000 6zM14.5 9a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM1.25 15a6.75 6.75 0 0113.5 0h3.25a.75.75 0 010 1.5H.75a.75.75 0 010-1.5h.5zM20 16.75a.75.75 0 01-.75.75h-.75a5.25 5.25 0 00-10.5 0h-.75a.75.75 0 010-1.5h.25a6.75 6.75 0 0113.5 0h.25a.75.75 0 01.75.75z"></path></svg> <span>All Users</span> </a>
+                   <a href="/admin/settings" class="flex items-center space-x-3 px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= currentPath.startsWith('/admin/settings') ? 'sidebar-link-active' : 'text-gray-700' %>"> <svg class="w-5 h-5 <%= currentPath.startsWith('/admin/settings') ? 'text-white' : 'text-gray-400' %>" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M11.49 3.17a.75.75 0 01.47.676v.616a.75.75 0 01-1.138.625 7.46 7.46 0 00-1.644 0 .75.75 0 01-1.138-.625V3.846a.75.75 0 01.47-.676 9.002 9.002 0 014 0zM7.958 6.178a.75.75 0 00-1.017-.51l-.39.195a.75.75 0 00-.488.85 7.458 7.458 0 00-.6 3.466.75.75 0 00.7.747l.608.03a.75.75 0 00.747-.7V9.612a7.5 7.5 0 01.87-3.434zm4.084 0a.75.75 0 01.87 3.434v.166a.75.75 0 00.747.7l.608-.03a.75.75 0 00.7-.747 7.458 7.458 0 00-.6-3.466.75.75 0 00-.488-.85l-.39-.195a.75.75 0 00-1.017.51zM5.04 12.964a.75.75 0 01.612-.816l.55-.092a.75.75 0 01.816.612 5.96 5.96 0 003.964 3.964.75.75 0 01.612.816l-.091.55a.75.75 0 01-.816.612 7.46 7.46 0 01-4.647-4.646zm9.92 0a7.46 7.46 0 01-4.646 4.646.75.75 0 01-.816-.612l-.091-.55a.75.75 0 01.612-.816 5.96 5.96 0 003.964-3.964.75.75 0 01.816-.612l.55.091a.75.75 0 01.612.816z" clip-rule="evenodd"></path></svg> <span>Platform Settings</span> </a>
+             <% } %>
+        <% } %>
+      </nav>
+      <div class="relative mt-auto px-4 py-3 border-t border-gray-200">
+         <% if (locals.loggedInUser) { %>
+            <button id="profileToggle" class="w-full flex items-center justify-start space-x-3 focus:outline-none rounded-md p-2 hover:bg-gray-100" onclick="toggleProfileDropdown()" aria-expanded="false" aria-controls="profileDropdown">
+                <img src="<%= loggedInUser.avatarUrl || '...' %>" alt="Avatar" class="w-9 h-9 rounded-full bg-gray-200 object-cover flex-shrink-0"/>
+                <div class="text-left overflow-hidden flex-1">
+                    <p class="text-sm font-medium text-gray-800 truncate"><%= loggedInUser.username %></p>
+                    <p class="text-xs text-gray-500 truncate"><%= companyDetails ? companyDetails.companyName : (storeDetails ? storeDetails.storeName : 'N/A') %></p>
+                </div>
+                <svg id="profileArrow" class="w-4 h-4 ml-auto transform transition-transform duration-200 flex-shrink-0 text-gray-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
+            </button>
+            <div id="profileDropdown" class="dropdown-menu absolute bottom-full left-0 mb-2 w-full bg-white border border-gray-200 rounded-md shadow-lg py-1">
+                <a href="/profile" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">My Profile</a>
+                <a href="/settings" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Settings</a>
+                <hr class="my-1 border-gray-200">
+                <form action="/logout" method="POST" class="w-full">
+                    <button type="submit" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Logout</button>
+                </form>
+            </div>
+         <% } else { %>
+            <p class="text-sm text-gray-500">Not logged in.</p> <a href="/login" class="text-sm text-blue-600 hover:underline">Login</a>
+         <% } %>
+      </div>
+    </aside>
+
+    <div class="flex-1 flex flex-col overflow-hidden">
+        <%- body %>
+    </div>
+
+  </div>
+
+  <script>
+    // Keep the toggleProfileDropdown and outside click listener JS here
+    function toggleProfileDropdown() { /* ... */ }
+    document.addEventListener('click', function(event) { /* ... */ });
+  </script>
+</body>
+</html>

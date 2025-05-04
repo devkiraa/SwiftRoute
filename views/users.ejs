@@ -1,0 +1,54 @@
+<header class="py-3 px-6 border-b border-gray-200 bg-white shadow-sm flex-shrink-0">
+    <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold text-gray-800"><%= tableTitle %></h2>
+         <div class="flex space-x-2">
+             <button class="px-3 py-1.5 border border-gray-300 text-xs font-medium text-gray-700 rounded-md hover:bg-gray-50">Import</button>
+             <a href="/users/new" class="inline-block px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700">Add User</a>
+         </div>
+    </div>
+</header>
+
+<section class="px-6 py-6 flex-1 overflow-y-auto"> <%# Added py-6 %>
+  <div class="bg-white border rounded-lg shadow-sm">
+     <div class="px-4 py-3 border-b">
+        <h3 class="text-base font-semibold text-gray-700"><%= tableTitle %></h3>
+     </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-left">
+        <thead class="bg-gray-50 border-b text-xs uppercase text-gray-500 tracking-wider">
+          <tr>
+             <th class="px-4 py-2 font-medium">Name</th>
+             <th class="px-4 py-2 font-medium">Role</th>
+             <th class="px-4 py-2 font-medium">Assigned Store</th>
+             <th class="px-4 py-2 font-medium">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y text-sm text-gray-700">
+          <% if (tableData && tableData.length > 0) { %>
+            <% tableData.forEach(item => { %> <%# Assuming item is a user %>
+              <tr class="hover:bg-gray-50">
+                   <td class="px-4 py-3 whitespace-nowrap"> <div class="flex items-center space-x-3"> <img src="<%= item.avatarUrl || '...' %>" alt="Avatar" class="w-8 h-8 ..."/> <div> <p class="font-medium text-gray-900"><%= item.username %></p> <p class="text-xs text-gray-500"><%= item.email %></p> </div> </div> </td>
+                   <td class="px-4 py-3"> <span class="inline-block px-2 py-1 text-xs font-medium rounded-full <% /* Role class logic */ %>"><%= item.role.replace(/_/g, ' ') %></span> </td>
+                   <td class="px-4 py-3"> <%= item.store ? item.store.storeName : '-' %> </td>
+                   <td class="px-4 py-3 whitespace-nowrap"> <a href="/users/<%= item._id %>/edit" class="text-blue-600 ...">Edit</a> </td>
+              </tr>
+            <% }) %>
+          <% } else { %>
+            <tr><td colspan="4" class="text-center py-10 text-gray-500">No users found.</td></tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+
+    <% if (pagination && pagination.totalPages > 1) { %>
+         <div class="flex items-center justify-between p-3 border-t bg-gray-50 rounded-b-lg">
+            <p class="text-xs text-gray-600">Page <%= pagination.currentPage %> of <%= pagination.totalPages %></p>
+            <div class="space-x-1">
+               <a href="?page=<%= pagination.currentPage - 1 %>" class="inline-block px-3 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-100 <%= pagination.currentPage === 1 ? 'opacity-50 cursor-not-allowed' : '' %>">Previous</a>
+               <a href="?page=<%= pagination.currentPage + 1 %>" class="inline-block px-3 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-100 <%= pagination.currentPage === pagination.totalPages ? 'opacity-50 cursor-not-allowed' : '' %>">Next</a>
+            </div>
+         </div>
+    <% } %>
+  </div>
+</section>

@@ -1,0 +1,37 @@
+<header class="py-3 px-6 border-b border-gray-200 bg-white shadow-sm flex-shrink-0">
+  <div class="flex items-center justify-between">
+      <h2 class="text-lg font-semibold text-gray-800">Dashboard Overview</h2>
+      </div>
+</header>
+
+<section class="p-6 bg-gray-50 flex-shrink-0">
+  <% if (typeof stats !== 'undefined' && stats && Object.keys(stats).length > 0) { %>
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <% Object.entries(stats).forEach(([key, value]) => { %>
+          <div class="bg-white border rounded-lg p-4 shadow-sm">
+              <p class="text-sm font-medium text-gray-500"><%= key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()) %></p>
+              <div class="mt-1">
+                  <h3 class="text-2xl font-semibold text-gray-900"><%= value %></h3>
+              </div>
+          </div>
+      <% }) %>
+  </div>
+  <% } else { %>
+  <p class="text-sm text-gray-500">No statistics available for your role.</p>
+  <% } %>
+</section>
+
+<section class="px-6 pb-6 flex-1 overflow-y-auto">
+  <div class="bg-white border rounded-lg shadow-sm p-6">
+       <h3 class="text-base font-semibold text-gray-700 mb-4">Welcome, <%= locals.loggedInUser ? loggedInUser.username : 'User' %>!</h3>
+       <p class="text-sm text-gray-600">
+          Select an option from the sidebar to manage your <%= locals.loggedInUser ? loggedInUser.role.replace('_', ' ') : '' %> tasks.
+          <% if (locals.loggedInUser && loggedInUser.role === 'warehouse_owner') { %>
+               You can manage warehouses, stores, inventory, users, and view company-wide orders and reports.
+          <% } else if (locals.loggedInUser && loggedInUser.role === 'store_owner') { %>
+               You can manage orders, customers, inventory, and employees for your store: <%= locals.storeDetails ? storeDetails.storeName : 'N/A' %>.
+          <% } %>
+           <%# Add welcome messages for other roles %>
+       </p>
+       </div>
+</section>
