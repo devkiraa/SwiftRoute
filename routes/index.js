@@ -41,19 +41,131 @@ router.get('/', (req, res) => {
   }
 });
 
-// Registration form & POST (Keep as is)
-router.get('/register', (req, res) => { res.render('register', { title: 'Register', layout: false }); });
-router.post('/register', async (req, res) => { /* ... keep registration logic ... */
+// GET /register - Render the registration form
+router.get('/register', (req, res) => {
+    // No specific data needed for initial render unless showing plans dynamically
+    res.render('register', { title: 'Register', layout: false }); // Use register view
+});
+
+// POST /register - Handle Company and User creation
+router.post('/register', async (req, res) => {
+    console.log("Registration data received:", req.body);
+    // Destructure all form fields including address components
+    const {
+        companyName, contactEmail, mobileNumber, gstin, subscriptionPlan,
+        address_street, address_city, address_state, address_pincode, address_country,
+        sameAsMain, // Checkbox value
+        billing_street, billing_city, billing_state, billing_pincode, billing_country,
+        username, password
+    } = req.body;
+
+    // Basic Server-Side Validation (Add more robust validation as needed)
+    const requiredCompanyFields = [companyName, contactEmail, address_street, address_city, address_state, address_pincode, address_country];
+    const requiredUserFields = [username, password];
+    let missingFields = [];
+
+    if (requiredCompanyFields.some(field => !field || !field.trim())) {
+        missingFields.push("Required company/address fields");
+    }
+    if (requiredUserFields.some(field => !field || !field.trim())) {
+         missingFields.push("Username and Password");
+    }
+    if (password && password.length < 6) {
+        missingFields.push("Password (min 6 chars)");
+    }
+    // If billing address is different, validate its fields too
+    if (!sameAsMain) {
+         const requiredBillingFields = [billing_street, billing_city, billing_state, billing_pincode, billing_country];
+         if (requiredBillingFields.some(field => !field || !field.trim())) {
+              missingFields.push("Required billing address fields");
+         }
+    }
+
+    if (missingFields.length > 0) {
+         console.error("Registration validation failed:", missingFields);
+         // Re-render form with error and existing data
+         return res.status(400).render('register', {
+             title: 'Register',
+             error: `Missing required fields: ${missingFields.join(', ')}. Please check the form.`,
+             formData: req.body, // Send back submitted data to repopulate
+             layout: false
+         });
+    }
+
+
     try {
-        const { companyName, contactEmail, subscriptionPlan, username, password } = req.body;
-        // TODO: Add validation
-        const company = await new Company({ companyName, contactEmail, subscriptionPlan }).save();
-        const salt = await bcrypt.genSalt(10);
-        const hash = await bcrypt.hash(password, salt);
-        const user = await new User({ username, email: contactEmail, password: hash, role: 'warehouse_owner', companyId: company._id }).save();
-        req.session.userId = user._id; // Set session
-        res.redirect('/dashboard');
-     } catch (err) { /* ... error handling ... */ }
+        // Check if Company Name or Email already exists
+        const existingCompany = await Company.findOne({ $or: [{ companyName }, { contactEmail }] });
+        if (existingCompany) {
+            throw new Error('Company name or contact email already registered.');
+        }
+        // Check if Username or User Email already exists
+        const existingUser = await User.findOne({ $or: [{ username }, { email: contactEmail }] });
+        if (existingUser) {
+            throw new Error('Username or email already taken for the owner account.');
+        }
+
+        // Construct Address Objects
+        const mainAddress = {
+            street: address_street,
+            city: address_city,
+            state: address_state,
+            pincode: address_pincode,
+            country: address_country || 'India'
+        };
+        const billingAddr = sameAsMain ? mainAddress : { // Use main if checked, otherwise construct new
+             street: billing_street,
+             city: billing_city,
+             state: billing_state,
+             pincode: billing_pincode,
+             country: billing_country || 'India'
+        };
+
+        // Create Company
+        const newCompany = new Company({
+            companyName,
+            contactEmail,
+            mobileNumber,
+            gstin: gstin?.toUpperCase(), // Store GSTIN uppercase
+            subscriptionPlan,
+            address: mainAddress,
+            billingAddress: billingAddr
+        });
+        const savedCompany = await newCompany.save();
+        console.log("Company created:", savedCompany.companyName);
+
+        // Hash User Password
+        const salt = await bcrypt.genSalt(saltRounds);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        // Create Warehouse Owner User
+        const newUser = new User({
+            username,
+            email: contactEmail, // Use company email for owner initially? Or ask for separate user email? Using contactEmail for now.
+            password: hashedPassword,
+            role: 'warehouse_owner', // Default role for registration
+            companyId: savedCompany._id // Link user to the new company
+        });
+        const savedUser = await newUser.save();
+        console.log("Warehouse owner user created:", savedUser.username);
+
+        // Log the user in by setting the session
+        req.session.userId = savedUser._id;
+        console.log(`User ${savedUser._id} registered and logged in.`);
+
+        // Redirect to add the first warehouse instead of dashboard
+        res.redirect('/warehouses/new?registration=success'); // Add query param for welcome message
+
+    } catch (err) {
+        console.error("Error during registration:", err);
+        // If company was created but user failed, potentially delete company? Or handle differently.
+        res.status(500).render('register', {
+            title: 'Register',
+            error: `Registration failed: ${err.message}`,
+            formData: req.body, // Send back submitted data
+            layout: false
+        });
+    }
 });
 
 // Login form & POST (Keep as is, including session regeneration)
