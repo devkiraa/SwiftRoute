@@ -1,11 +1,9 @@
-<% locals.pageTitle = typeof title !== 'undefined' ? title : 'Delivery Locations' %> <%# Updated Title %>
+<% locals.pageTitle = typeof title !== 'undefined' ? title : 'Optimized Delivery Route' %>
 
 <header class="py-3 px-6 border-b border-gray-200 bg-white shadow-sm flex-shrink-0">
      <div class="flex items-center justify-between">
          <h2 class="text-lg font-semibold text-gray-800"><%= locals.pageTitle %></h2>
          <div>
-             <%# Optimize button removed or disabled %>
-             <button id="optimize-route-btn" class="px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-gray-400 cursor-not-allowed mr-2" disabled title="Optimization unavailable">Optimize Route</button>
              <a href="/deliveries/my" class="inline-block px-3 py-1.5 border border-gray-300 text-xs font-medium text-gray-700 rounded-md hover:bg-gray-50">
                  Back to List
              </a>
@@ -13,10 +11,10 @@
      </div>
 </header>
 
-<%# Display errors if any %>
+<%# Display errors from routing API if any %>
 <% if (typeof errorMsg !== 'undefined' && errorMsg) { %>
-    <div class="m-6 bg-yellow-100 border border-yellow-400 text-yellow-800 px-4 py-3 rounded relative max-w-4xl mx-auto" role="alert"> <%# Changed to warning color %>
-        <strong class="font-bold">Notice:</strong>
+    <div class="m-6 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative max-w-4xl mx-auto" role="alert">
+        <strong class="font-bold">Routing Error!</strong>
         <span class="block sm:inline"><%= errorMsg %></span>
     </div>
 <% } %>
@@ -28,37 +26,59 @@
         <div id="route-map" class="w-full h-full border rounded-lg bg-gray-200 text-gray-500 flex items-center justify-center relative">
              <%# Loading Indicator %>
              <div id="map-loader" class="absolute inset-0 bg-gray-200 bg-opacity-75 flex items-center justify-center z-10">
-                 <svg class="animate-spin h-8 w-8 text-blue-600" /* ... */></svg>
-                 <span class="ml-3">Loading Map & Locations...</span> <%# Updated text %>
+                 <svg class="animate-spin h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                 <span class="ml-3">Loading Map & Route...</span>
              </div>
         </div>
      </div>
 
-    <%# Delivery List / Route Steps Area %>
+    <%# Delivery List / Route Steps Area - NOW DISPLAYS LEGS %>
     <div class="lg:col-span-1 h-[calc(100vh-150px)] overflow-y-auto bg-white border rounded-lg shadow-sm p-4 space-y-3">
-         <h3 class="text-base font-semibold text-gray-700 border-b pb-2 mb-3">Delivery Stops (Unoptimized)</h3> <%# Updated Title %>
-          <%# Use the 'orders' array passed from the backend %>
-          <% if (typeof orders !== 'undefined' && orders && orders.length > 0) { %>
-                <% orders.forEach((order, index) => { %>
+         <h3 class="text-base font-semibold text-gray-700 border-b pb-2 mb-3">Optimized Route Legs</h3>
+          <%# Use the 'routeLegs' array passed from the backend %>
+          <% if (typeof routeLegs !== 'undefined' && routeLegs && routeLegs.length > 0) { %>
+                <% routeLegs.forEach((leg, index) => { %>
                     <div class="border p-3 rounded-md bg-gray-50">
                         <div class="flex items-start space-x-3">
-                             <span class="inline-block flex-shrink-0 bg-gray-500 text-white rounded-full w-6 h-6 text-sm text-center leading-6 font-medium mt-0.5">S<%= index + 1 %></span> <%# Simple Stop Label %>
+                             <span class="inline-block flex-shrink-0 bg-blue-600 text-white rounded-full w-6 h-6 text-sm text-center leading-6 font-medium mt-0.5"><%= index + 1 %></span>
                              <div class="flex-1">
-                                 <p class="font-semibold text-sm text-gray-900 mb-0.5"> Deliver to: <%= order.customerName || 'N/A' %> </p>
-                                 <p class="text-xs text-gray-700 leading-tight"><%= order.shippingAddress %></p>
-                                 <% if (order.storeId?.storeName) { %> <p class="text-xs text-gray-500 mt-1">(Store: <%= order.storeId.storeName %>)</p> <% } %>
-                                 <p class="text-xs text-gray-500 mt-1">Order ID: ...<%= order._id.toString().slice(-8) %></p>
-                                 <div class="mt-2 flex items-center space-x-3">
-                                     <a href="/orders/<%= order._id %>" class="text-blue-600 hover:underline text-xs">View Details</a>
-                                     <%# Action Buttons %>
-                                     <% if(order.orderStatus === 'confirmed') { %> <form action="/deliveries/<%= order._id %>/pickup" method="POST" class="inline" onsubmit="..."> <button type="submit" class="text-orange-600 ...">Mark Picked Up</button> </form> <% } else if (order.orderStatus === 'shipped') { %> <form action="/deliveries/<%= order._id %>/delivered" method="POST" class="inline" onsubmit="..."> <button type="submit" class="text-green-600 ...">Mark Delivered</button> </form> <% } %>
-                                 </div>
+                                 <p class="font-semibold text-sm text-gray-900 mb-0.5">
+                                     From: <%= leg.startName %>
+                                 </p>
+                                 <p class="text-xs text-gray-600 mb-1"><%= leg.startAddress %></p>
+                                 <p class="font-semibold text-sm text-gray-900 mb-0.5 mt-2 border-t pt-2">
+                                     To: <%= leg.endName %>
+                                 </p>
+                                 <p class="text-xs text-gray-700 leading-tight"><%= leg.endAddress %></p>
+                                 <p class="text-xs text-gray-500 mt-1">
+                                     Distance: <%= leg.distance || 'N/A' %> | Duration: <%= leg.duration || 'N/A' %>
+                                 </p>
+                                 <%# Add link to order details if this leg corresponds to an order %>
+                                 <% if (leg.orderId) { %>
+                                    <div class="mt-2 flex items-center space-x-3">
+                                        <a href="/orders/<%= leg.orderId %>" class="text-blue-600 hover:underline text-xs">View Order Details</a>
+                                        <%# Find the order to display action buttons %>
+                                        <% const legOrder = orders.find(o => o._id.toString() === leg.orderId.toString()); %>
+                                        <% if (legOrder) { %>
+                                             <% if(legOrder.orderStatus === 'confirmed') { %> <form action="/deliveries/<%= legOrder._id %>/pickup" method="POST" class="inline" onsubmit="..."> <button type="submit" class="text-orange-600 ...">Mark Picked Up</button> </form> <% } else if (legOrder.orderStatus === 'shipped') { %> <form action="/deliveries/<%= legOrder._id %>/delivered" method="POST" class="inline" onsubmit="..."> <button type="submit" class="text-green-600 ...">Mark Delivered</button> </form> <% } %>
+                                        <% } %>
+                                    </div>
+                                 <% } %>
                              </div>
                          </div>
                     </div>
                 <% }) %>
+          <% } else if (typeof orders !== 'undefined' && orders && orders.length > 0) { %>
+                <p class="text-sm text-gray-500 text-center py-4">Could not calculate route legs. Displaying stops:</p>
+                <%# Fallback: Show original orders list if legs fail but orders exist %>
+                 <% orders.forEach((order, index) => { %>
+                    <div class="border p-3 rounded-md bg-gray-100"> <%# Different bg %>
+                        <p class="font-medium text-sm text-gray-800 mb-1">Stop <%= index + 1 %>: <%= order.customerName || order.storeId?.storeName %></p>
+                        <p class="text-xs text-gray-600"><%= order.shippingAddress %></p>
+                    </div>
+                 <% }) %>
           <% } else { %>
-                <p class="text-sm text-gray-500 text-center py-4">No deliveries with valid locations assigned.</p>
+                <p class="text-sm text-gray-500 text-center py-4">No deliveries assigned or valid for routing.</p>
           <% } %>
     </div>
 </section>
@@ -70,102 +90,77 @@
     const loader = document.getElementById('map-loader');
     const mapDiv = document.getElementById('route-map');
 
-    // --- Safely Get Data Passed from Server ---
-    const rawAssignedOrders = '<%= typeof orders !== "undefined" ? JSON.stringify(orders) : "[]" %>';
-    const rawOriginWarehouse = '<%= typeof originWarehouse !== "undefined" ? JSON.stringify(originWarehouse) : "null" %>';
-    // No routePolyline needed now
+    // Safely get data passed from server
+    const rawRoutePolyline =      '<%= typeof routePolyline !== "undefined" ? JSON.stringify(routePolyline) : "null" %>';
+    const rawAssignedOrders =     '<%= typeof orders !== "undefined" ? JSON.stringify(orders) : "[]" %>'; // These are REORDERED by backend
+    const rawOriginWarehouse =    '<%= typeof originWarehouse !== "undefined" ? JSON.stringify(originWarehouse) : "null" %>';
 
+    let routePolyline = null;
     let ordersList = [];
     let originDetails = null;
-    try {
-        ordersList = JSON.parse(rawAssignedOrders);
-        originDetails = JSON.parse(rawOriginWarehouse);
-    } catch (e) { console.error("Error parsing server data:", e); }
-    // --- End Data Parsing ---
+
+    function parseServerData() { /* ... Keep implementation ... */ }
 
     async function initRouteMap() {
-        console.log("Attempting initRouteMap() (Simplified)...");
+        console.log("Attempting initRouteMap()...");
+        if (!parseServerData()) { return; }
+
         try {
-            if (!google?.maps?.Map || !google?.maps?.marker?.AdvancedMarkerElement) { // Removed geometry check for now
-                 throw new Error("Google Maps script/libraries did not load properly.");
-             }
+            if (!google?.maps?.Map) { throw new Error("Maps API not loaded."); } // Simplified check
 
-            // Use maps and marker libraries
-            const { Map, InfoWindow, LatLngBounds } = await google.maps.importLibrary("maps");
+            const { Map, InfoWindow, LatLngBounds, Polyline } = await google.maps.importLibrary("maps");
             const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
-            // const { encoding } = await google.maps.importLibrary("geometry"); // Not needed for polyline now
+            const { encoding } = await google.maps.importLibrary("geometry");
+            console.log("Route Map Libraries Loaded");
 
-            console.log("Map/Marker Libraries Loaded");
+            let mapCenter = { lat: 12.9716, lng: 77.5946 };
+            // Calculate center based on origin or first order
+            if (originDetails?.location?.coordinates) { /* ... set mapCenter ... */ }
+            else if (ordersList[0]?.shippingLocation?.coordinates) { /* ... set mapCenter ... */ }
+            console.log("Map Center:", mapCenter);
 
-            // Determine initial center
-            let mapCenter = { lat: 12.9716, lng: 77.5946 }; // Default
-             if (originDetails?.location?.coordinates?.length === 2) { /* ... */ }
-             else if (ordersList[0]?.shippingLocation?.coordinates?.length === 2) { /* ... */ }
-             console.log("Map Center:", mapCenter);
+            map = new Map(mapDiv, { /* ... map options ... */ });
+            if(loader) loader.style.display = 'none';
+            console.log("Map initialized.");
 
-            // --- Initialize Map ---
-            map = new Map(mapDiv, { center: mapCenter, zoom: 11, mapId: "DELIVERY_LOCATIONS_MAP_ID" });
-             mapDiv.classList.remove('flex', 'items-center', 'justify-center');
-             mapDiv.textContent = '';
-             if(loader) loader.style.display = 'none';
-             console.log("Map initialized.");
+            const bounds = new google.maps.LatLngBounds();
 
-             const bounds = new google.maps.LatLngBounds();
+            // Add Origin Marker (Keep logic)
+            if (originDetails?.location?.coordinates) { /* ... */ }
 
-             // --- Add Origin Marker ---
-             if (originDetails?.location?.coordinates?.length === 2) {
-                 // ... Add origin marker and extend bounds ...
-                 console.log("Origin marker added.");
-             }
-
-             // --- Add Destination Markers ---
-             if (ordersList && ordersList.length > 0) {
+            // Add Destination Markers using ordersList (already optimized order)
+            if (ordersList?.length > 0) {
                  ordersList.forEach((order, index) => {
-                     const deliveryLocation = order.shippingLocation?.coordinates?.length === 2 ? order.shippingLocation : order.storeId?.location;
-                     if(deliveryLocation?.coordinates?.length === 2){
-                         const destLat = parseFloat(deliveryLocation.coordinates[1]);
-                         const destLng = parseFloat(deliveryLocation.coordinates[0]);
-                         if (!isNaN(destLat) && !isNaN(destLng)) {
-                             const pos = { lat: destLat, lng: destLng };
-                             // Use a standard marker, or keep numbered if preferred
-                             const marker = new AdvancedMarkerElement({
-                                 map, position: pos,
-                                 title: `Deliver to: ${order.customerName || order.storeId?.storeName || 'Stop '+(index+1)}`
-                                 // content: buildMarkerContent(index + 1) // Optional: Keep numbered markers
-                              });
-                             const infoContent = `<b>${order.customerName || 'Delivery'}</b><br>${order.shippingAddress || ''}${order.storeId?.storeName ? '<br>(Store: '+order.storeId.storeName+')' : ''}`;
-                             const info = new InfoWindow({ content: infoContent });
-                             marker.addListener('click', () => info.open({ map: map, anchor: marker }));
-                             bounds.extend(pos);
-                         }
-                     } else { console.warn(`Skipping marker for order ${order._id}.`); }
+                    // ... (Keep logic to find destLat/destLng) ...
+                    if (!isNaN(destLat) && !isNaN(destLng)) {
+                         const pos = { lat: destLat, lng: destLng };
+                         // Use index + 1 for the stop number from the optimized list
+                         const marker = new AdvancedMarkerElement({ /* ... content: buildMarkerContent(index + 1) ... */ });
+                         // ... Add InfoWindow ...
+                         bounds.extend(pos);
+                     }
                  });
                  console.log(`Added ${ordersList.length} destination markers.`);
              }
 
-            // --- Draw Polyline (REMOVED) ---
-            console.log("Skipping polyline drawing in simplified view.");
+            // Draw **OVERVIEW** Polyline using the single string passed
+            if (routePolyline) {
+                console.log("Drawing overview route polyline...");
+                try {
+                    const decodedPath = encoding.decodePath(routePolyline);
+                    new Polyline({ path: decodedPath, map: map, /* ... styles ... */ });
+                    console.log("Route polyline drawn.");
+                } catch (polyError) { console.error("Error drawing polyline:", polyError); }
+            } else { console.log("Route polyline not available."); }
 
-            // --- Fit Map ---
-             if (ordersList.length > 0 && !bounds.isEmpty()) {
-                 console.log("Fitting map to bounds.");
-                 map.fitBounds(bounds);
-                 google.maps.event.addListenerOnce(map, 'idle', () => { map.panToBounds(bounds, 50); });
-             } else if (ordersList.length === 0) {
-                 mapDiv.innerHTML = '<p class="text-center p-4">No deliveries with valid locations to display.</p>';
-                 if(loader) loader.style.display = 'none';
-             } else if (!bounds.isEmpty()){ // Only origin maybe
-                 map.setCenter(bounds.getCenter()); map.setZoom(14);
-             } else { map.setCenter(mapCenter); map.setZoom(11); }
+            // Fit Map (Keep logic)
+            if (ordersList.length > 0 && !bounds.isEmpty()) { /* ... */ }
+            else if (ordersList.length === 0) { /* ... */ }
+            else { /* ... */ }
 
-        } catch (err) {
-             console.error("Error initializing map:", err);
-             mapDiv.innerHTML = `<p class="text-center p-4 text-red-600">Error loading map: ${err.message}</p>`;
-             if(loader) loader.style.display = 'none';
-        }
+        } catch (err) { /* ... error handling ... */ }
     } // End initRouteMap
 
-    // Optional: keep or remove if not using numbered markers
-    // function buildMarkerContent(stopNumber) { /* ... */ }
+    function buildMarkerContent(stopNumber) { /* ... Keep implementation ... */ }
 
 </script>

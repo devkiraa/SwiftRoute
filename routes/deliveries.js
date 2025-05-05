@@ -1,19 +1,22 @@
 // routes/deliveries.js
 const express = require('express');
+const axios = require('axios');
 const mongoose = require('mongoose');
 const Order = require('../models/Order');
 const User = require('../models/User');
 const Store = require('../models/Store');
 const Item = require('../models/Item');
 const Warehouse = require('../models/Warehouse');
+const { RouteOptimizationClient } = require('@googlemaps/routeoptimization');
 
 // Import Google Maps Client
 const { Client, Status } = require("@googlemaps/google-maps-services-js");
 const googleMapsClient = new Client({});
-// *** CORRECTED CONFIG VARIABLE NAME ***
-const Maps_API_KEY_CONFIG = { key: process.env.Maps_API_KEY }; // Use Maps_API_KEY
+// *** USE ENV VARIABLE NAME FROM YOUR .env FILE ***
+const Maps_API_KEY_CONFIG = { key: process.env.Maps_API_KEY }; // Use Maps_API_KEY here
 
 const router = express.Router();
+const routingClient = new RouteOptimizationClient();
 
 // --- Local Auth Middleware ---
 function ensureAuthenticated(req, res, next) {
@@ -115,77 +118,94 @@ router.get('/my', async (req, res) => {
     }
 });
 
-// GET /deliveries/map - Show UNOPTIMIZED delivery locations
+// GET /deliveries/map — OSRM + Nearest-Neighbor Optimization
 router.get('/map', async (req, res) => {
-    console.log("--- Accessing GET /deliveries/map (Simplified) ---");
-    const loggedInUser = res.locals.loggedInUser;
-    let assignedOrders = [];
-    let originWarehouse = null;
-    let errorMsg = null;
-    // *** USE CORRECT ENV VARIABLE NAME from your .env ***
-    const googleApiKeyForView = process.env.Maps_API_KEY; // Using the name you confirmed
-
-    if (!googleApiKeyForView) {
-        console.error("FATAL: Maps_API_KEY is missing!"); // Use correct name in error msg
-        errorMsg = "Mapping service API key not configured.";
-        return res.render('deliveries/route_map', { title: 'Delivery Locations', orders: [], originWarehouse: null, googleMapsApiKey: null, errorMsg: errorMsg, layout: './layouts/dashboard_layout' });
-    }
-
+    console.log('--- GET /deliveries/map (OSRM NN) ---');
+    const driverId = res.locals.loggedInUser._id;
+  
     try {
-        // 1. Fetch orders
-        assignedOrders = await Order.find({
-            assignedDeliveryPartnerId: loggedInUser._id,
-            orderStatus: { $in: ['confirmed', 'shipped'] }
-        })
-        .populate('storeId', 'storeName address location')
-        .populate('warehouseId', 'name location address')
-        .sort({ placedDate: 1 }) // Sort by date or maybe proximity later?
-        .limit(100) // Keep limit reasonable
+      const all = await Order.find({
+        assignedDeliveryPartnerId: driverId,
+        orderStatus: { $in: ['confirmed', 'shipped'] }
+      })
+        .populate('warehouseId', 'location')
+        .populate('shippingLocation')
+        .populate('storeId', 'location')
         .lean();
-        console.log(`Found ${assignedOrders.length} assigned orders.`);
-
-        // Filter orders with valid locations
-        const ordersWithLocation = assignedOrders.filter(order => {
-             const deliveryLocation = order.shippingLocation?.coordinates?.length === 2 ? order.shippingLocation : order.storeId?.location;
-             const warehouseLocation = order.warehouseId?.location?.coordinates?.length === 2;
-             if (!warehouseLocation) console.warn(`Order ${order._id} excluded: Missing warehouse location.`);
-             if (!deliveryLocation?.coordinates || deliveryLocation.coordinates.length !== 2) { console.warn(`Order ${order._id} excluded: Missing delivery coordinates.`); return false; }
-             return warehouseLocation;
-        });
-        console.log(`Displaying ${ordersWithLocation.length} orders with valid locations.`);
-
-        // 2. Determine Origin (if any orders are valid)
-        if (ordersWithLocation.length > 0) {
-            originWarehouse = ordersWithLocation[0].warehouseId;
-             console.log("Route Origin:", originWarehouse.name);
-        } else {
-             console.log("No valid orders to determine origin or display stops.");
-             if(assignedOrders.length > 0) { // Orders exist but lack coords
-                errorMsg = "Some assigned deliveries are missing valid location data.";
-             }
+  
+      const points = [];
+      const uniqueCoords = [];
+      all.forEach(o => {
+        const wh = o.warehouseId?.location?.coordinates;
+        const dl = (o.shippingLocation?.coordinates?.length === 2)
+          ? o.shippingLocation.coordinates
+          : o.storeId?.location?.coordinates;
+        if (wh?.length === 2 && dl?.length === 2) {
+          points.push(o);
+          if (uniqueCoords.length === 0) uniqueCoords.push({ lat: wh[1], lng: wh[0] });
+          uniqueCoords.push({ lat: dl[1], lng: dl[0] });
         }
-
-        // 3. Render the view (pass the filtered, unoptimized list)
-        res.render('deliveries/route_map', {
-            title: 'Delivery Locations Map', // Update title
-            orders: ordersWithLocation,       // Pass the filtered list
-            originWarehouse: originWarehouse,
-            routePolyline: null,            // No polyline anymore
-            googleMapsApiKey: googleApiKeyForView,
-            errorMsg: errorMsg,
-            layout: './layouts/dashboard_layout'
+      });
+      if (!points.length) {
+        return res.render('deliveries/route_map', {
+          title: 'Optimized Delivery Route', orders: [], originWarehouse: null,
+          routePolyline: null, legs: [], googleMapsApiKey: process.env.Maps_API_KEY,
+          errorMsg: 'No valid delivery locations.', layout: './layouts/dashboard_layout'
         });
-
-     } catch (err) {
-         console.error(`Error loading delivery map page for driver ${loggedInUser?._id}:`, err);
-         res.status(500).render('deliveries/route_map', {
-             title: 'Error Loading Map', orders: [], originWarehouse: null, routePolyline: null,
-             googleMapsApiKey: googleApiKeyForView, errorMsg: `Server Error: ${err.message}`, layout: './layouts/dashboard_layout'
-         });
-     }
-});
-
-// --- Status Update Routes ---
+      }
+  
+      const coordList = uniqueCoords.map(c => `${c.lng},${c.lat}`).join(';');
+      const tableUrl = `http://router.project-osrm.org/table/v1/driving/${coordList}?annotations=distance,duration`;
+      const { distances, durations } = (await axios.get(tableUrl)).data;
+  
+      const N = distances.length;
+      const visited = Array(N).fill(false);
+      visited[0] = true;
+      const visitOrder = [0];
+      let current = 0;
+      const alpha = 1.0, beta = 0.5;
+      for (let i = 1; i < N; i++) {
+        let best = { idx: -1, cost: Infinity };
+        for (let j = 1; j < N; j++) {
+          if (!visited[j]) {
+            const cost = alpha * distances[current][j] + beta * durations[current][j];
+            if (cost < best.cost) best = { idx: j, cost };
+          }
+        }
+        visited[best.idx] = true;
+        visitOrder.push(best.idx);
+        current = best.idx;
+      }
+      visitOrder.push(0);
+  
+      // Build route legs for client: pairs of coordinates
+      const legs = [];
+      for (let i = 0; i < visitOrder.length - 1; i++) {
+        const a = uniqueCoords[visitOrder[i]];
+        const b = uniqueCoords[visitOrder[i+1]];
+        legs.push([a, b]);
+      }
+  
+      // Map back orders in optimized order
+      const finalOrders = visitOrder.slice(1, -1).map(i => points[i-1]);
+      const originWarehouse = points[0].warehouseId;
+  
+      res.render('deliveries/route_map', {
+        title: 'Optimized Delivery Route', orders: finalOrders,
+        originWarehouse, legs, googleMapsApiKey: process.env.Maps_API_KEY,
+        errorMsg: null, layout: './layouts/dashboard_layout'
+      });
+    } catch (err) {
+      console.error('Error in /deliveries/map:', err);
+      res.status(500).render('deliveries/route_map', {
+        title: 'Error Loading Route', orders: [], originWarehouse: null,
+        legs: [], googleMapsApiKey: process.env.Maps_API_KEY,
+        errorMsg: `Server error: ${err.message}`, layout: './layouts/dashboard_layout'
+      });
+    }
+  });
+  
+    // --- Status Update Routes ---
 
 // POST /deliveries/batch-pickup - Mark ALL confirmed orders for the warehouse as shipped
 router.post('/batch-pickup', async (req, res) => {
