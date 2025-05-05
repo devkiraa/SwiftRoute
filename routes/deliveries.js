@@ -40,12 +40,12 @@ router.get('/my', async (req, res) => {
     let showPickupButton = false;
 
     try {
-        // 1. Find orders
+        // 1. Find all active orders assigned to driver
         const allAssignedOrders = await Order.find({
             assignedDeliveryPartnerId: loggedInUser._id,
             orderStatus: { $in: ['confirmed', 'shipped'] }
         })
-        .populate('warehouseId', 'name location address _id') // Ensure _id is selected if using lean() with populate
+        .populate('warehouseId', 'name location address _id')
         .populate('storeId', 'storeName')
         .sort({ placedDate: 1 }).lean();
         console.log(`Found ${allAssignedOrders.length} total active assigned orders.`);
@@ -53,43 +53,51 @@ router.get('/my', async (req, res) => {
         if (allAssignedOrders.length > 0) {
             // 2. Determine Origin & Check consistency
             originWarehouse = allAssignedOrders[0].warehouseId;
-            // Check if warehouse was populated and has an ID
-            if (!originWarehouse?._id) {
-                 console.error("Error: First order lacks a valid populated warehouseId.", allAssignedOrders[0]);
-                 throw new Error("Cannot determine origin warehouse for deliveries. Check order data.");
-            }
-            const originWarehouseId = originWarehouse._id; // Now we know this exists
-
-            // Verify all orders come from the same warehouse
+            if (!originWarehouse?._id) { throw new Error("Cannot determine origin warehouse."); }
+            const originWarehouseId = originWarehouse._id;
             const allFromSameWarehouse = allAssignedOrders.every(order => {
-                // *** SAFER CHECK ***
-                // Check if warehouseId exists and has an _id before comparing
                 const currentWarehouseId = order.warehouseId?._id;
-                if (!currentWarehouseId) {
-                     console.warn(`Order ${order._id} is missing a valid populated warehouseId.`);
-                     return false; // Treat orders missing warehouse as not matching
-                 }
+                if (!currentWarehouseId) { console.warn(`Order ${order._id} missing warehouseId.`); return false; }
                 return currentWarehouseId.toString() === originWarehouseId.toString();
             });
-
-            if (!allFromSameWarehouse) {
-                 console.error(`Driver ${loggedInUser._id} has orders assigned from multiple warehouses or orders with missing warehouse data.`);
-                 throw new Error("Deliveries are assigned from different warehouses or lack warehouse info. Please contact dispatch.");
-            }
+            if (!allFromSameWarehouse) { throw new Error("Deliveries assigned from multiple warehouses."); }
             console.log(`All orders originate from warehouse: ${originWarehouse.name} (${originWarehouseId})`);
 
             // Separate orders
             ordersForPickup = allAssignedOrders.filter(o => o.orderStatus === 'confirmed');
             ordersInProgress = allAssignedOrders.filter(o => o.orderStatus === 'shipped');
             showPickupButton = ordersForPickup.length > 0;
+            console.log(`Orders for pickup: ${ordersForPickup.length}, Orders in progress: ${ordersInProgress.length}`); // Log counts
+
+             // *** Log the orders being aggregated ***
+             if (showPickupButton) {
+                 console.log("Orders used for aggregation:", JSON.stringify(ordersForPickup.map(o => ({_id: o._id, items: o.orderItems})), null, 2));
+             }
 
             // 3. Aggregate Items
             if (showPickupButton) {
-                 console.log("Aggregating items for pickup list...");
-                 try {
-                    aggregatedItems = await Order.aggregate([ /* ... pipeline with safer unwind ... */ ]);
+                console.log("Aggregating items for pickup list...");
+                try {
+                    aggregatedItems = await Order.aggregate([
+                        { $match: { _id: { $in: ordersForPickup.map(o => o._id) } }}, // Match specific confirmed order IDs
+                        { $unwind: "$orderItems" },
+                        { $group: { _id: "$orderItems.itemId", totalQuantity: { $sum: "$orderItems.quantity" } } },
+                        { $lookup: { from: Item.collection.name, localField: "_id", foreignField: "_id", as: "itemDetails" }},
+                        { $unwind: { path: "$itemDetails", preserveNullAndEmptyArrays: true } },
+                        { $project: { _id: 0, itemId: "$_id", name: { $ifNull: [ "$itemDetails.name", "Unknown Item" ] }, sku: { $ifNull: [ "$itemDetails.sku", "N/A" ] }, neededQuantity: "$totalQuantity" }},
+                        { $sort: { name: 1 } }
+                    ]);
                     console.log(`Aggregation complete. Found ${aggregatedItems.length} unique items.`);
-                 } catch (aggError) { /* ... handle aggregation error ... */ }
+                    // Log if lookup failed for any items
+                    if (aggregatedItems.some(item => item.name === 'Unknown Item')) {
+                        console.warn("Warning: Some items in confirmed orders could not be found in the Item collection (check itemIds).");
+                    }
+                } catch (aggError) {
+                    console.error("Error during item aggregation:", aggError);
+                    throw aggError; // Re-throw
+                }
+            } else {
+                 console.log("No orders in 'confirmed' status, skipping item aggregation.");
             }
         }
 
