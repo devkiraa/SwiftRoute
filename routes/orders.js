@@ -242,34 +242,31 @@ router.get('/new', ensureCanCreateOrder, async (req, res) => {
 });
 
 
+// --- ORDER DETAILS ---
 router.get('/:id', async (req, res) => {
     console.log(`--- Accessing GET /orders/${req.params.id} ---`);
     const loggedInUser = res.locals.loggedInUser;
     const orderId = req.params.id;
 
     if (!loggedInUser) return res.redirect('/login');
-    if (!mongoose.Types.ObjectId.isValid(orderId)) {
-        return res.status(400).render('error_page', { /* ... */ });
-    }
+    if (!mongoose.Types.ObjectId.isValid(orderId)) { /* ... invalid ID handling ... */ }
 
     try {
         console.log(`Workspaceing order ${orderId}...`);
         const order = await Order.findById(orderId)
-            .populate('storeId', 'storeName address phone companyId')
+            .populate('storeId', 'storeName address phone companyId') // Ensure companyId is populated
             .populate('customerId', 'username email phone')
             .populate({ path: 'orderItems.itemId', model: 'Item', select: 'name sku price' })
             .populate('assignedDeliveryPartnerId', 'username')
             .lean();
 
-        if (!order) { return res.status(404).render('error_page', { /* ... */ }); }
-        console.log(`Order ${orderId} fetched successfully.`);
+        if (!order) { /* ... not found handling ... */ }
+        console.log(`Order ${orderId} fetched. Store ID: ${order.storeId?._id}, Store Company ID: ${order.storeId?.companyId}`); // Log fetched IDs
 
         console.log("Checking access permissions...");
-        const hasAccess = await canAccessStoreData(loggedInUser, order.storeId?._id); // ** Keep this calculation **
+        const hasAccess = await canAccessStoreData(loggedInUser, order.storeId?._id);
         const isAssignedDelivery = loggedInUser.role === 'delivery_partner' && order.assignedDeliveryPartnerId?._id?.toString() === loggedInUser._id.toString();
-        console.log(`Access Check: hasStoreAccess=${hasAccess}, isAssignedDelivery=${isAssignedDelivery}`);
-
-        if (!hasAccess && !isAssignedDelivery) { return res.status(403).render('error_page', { /* ... */ }); }
+        if (!hasAccess && !isAssignedDelivery) { /* ... access denied handling ... */ }
 
         // Determine allowed actions
         console.log("Determining allowed actions...");
@@ -280,7 +277,21 @@ router.get('/:id', async (req, res) => {
         if (canManage && ['pending', 'confirmed', 'shipped'].includes(order.orderStatus)) { allowedActions.canUpdateStatus = true; }
         if (canManage && ['confirmed', 'shipped'].includes(order.orderStatus)) {
             allowedActions.canAssignDelivery = true;
-            // ... Fetch availableDrivers ...
+            const orderCompanyId = order.storeId?.companyId; // Get companyId from populated store
+
+            // *** ADD Explicit Log for Company ID used in Driver Query ***
+            console.log(`Order's Store Company ID for driver search: ${orderCompanyId}`);
+
+            if (orderCompanyId) {
+                 console.log(`Workspaceing available drivers for Company ID: ${orderCompanyId}...`);
+                 availableDrivers = await User.find({
+                     companyId: orderCompanyId,         // Filter by the order's store's company
+                     role: 'delivery_partner',     // Filter by role
+                 }).select('username _id').lean();
+                 console.log(`Found ${availableDrivers.length} drivers.`);
+            } else {
+                 console.warn(`Could not determine companyId for order ${orderId} to fetch drivers.`);
+            }
         }
         console.log("Allowed Actions:", allowedActions);
 
@@ -290,7 +301,7 @@ router.get('/:id', async (req, res) => {
             order: order,
             allowedActions: allowedActions,
             availableDrivers: availableDrivers,
-            hasAccess: hasAccess, // <-- *** ADD hasAccess HERE ***
+            hasAccess: hasAccess, // Ensure this is passed for Edit button logic
             layout: './layouts/dashboard_layout'
         });
         console.log("Finished rendering orders/details view.");

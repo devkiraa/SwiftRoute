@@ -1,0 +1,50 @@
+<% locals.pageTitle = typeof title !== 'undefined' ? title : 'Delivery Route' %>
+
+<header class="py-3 px-6 border-b border-gray-200 bg-white shadow-sm flex-shrink-0">
+    <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold text-gray-800"><%= locals.pageTitle %></h2>
+        <div>
+             <button id="optimize-route-btn" class="px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 mr-2">Optimize Route</button>
+             <a href="/deliveries/my" class="inline-block px-3 py-1.5 border border-gray-300 text-xs font-medium text-gray-700 rounded-md hover:bg-gray-50">
+                Back to List
+             </a>
+        </div>
+    </div>
+</header>
+
+<%# Use flex layout for map and list side-by-side eventually %>
+<section class="p-6 flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-hidden">
+
+     <%# Map Area %>
+     <div class="lg:col-span-2 h-[calc(100vh-150px)]"> <%# Adjust height as needed %>
+        <div id="route-map" class="w-full h-full border rounded-lg bg-gray-200 flex items-center justify-center text-gray-500">
+             Map loading... (Route optimization and map display coming soon!)
+        </div>
+     </div>
+
+    <%# Delivery List / Route Steps Area %>
+    <div class="lg:col-span-1 h-[calc(100vh-150px)] overflow-y-auto bg-white border rounded-lg shadow-sm p-4 space-y-3">
+         <h3 class="text-base font-semibold text-gray-700 border-b pb-2 mb-3">Deliveries for Route</h3>
+          <% if (orders && orders.length > 0) { %>
+                <% orders.forEach((order, index) => { %>
+                    <div class="border p-3 rounded-md bg-gray-50">
+                        <p class="font-medium text-sm text-gray-800 mb-1">Stop <%= index + 1 %>: <%= order.storeId?.storeName || 'N/A' %></p>
+                        <p class="text-xs text-gray-600"><%= order.shippingAddress %></p>
+                        <p class="text-xs text-gray-600">Recipient: <%= order.customerName %></p>
+                        <p class="text-xs text-gray-500 mt-1">Order ID: ...<%= order._id.toString().slice(-8) %></p>
+                        <div class="mt-2">
+                             <a href="/orders/<%= order._id %>" class="text-blue-600 hover:underline text-xs">View Details</a>
+                        </div>
+                    </div>
+                <% }) %>
+          <% } else { %>
+                <p class="text-sm text-gray-500 text-center py-4">No deliveries assigned for routing.</p>
+          <% } %>
+    </div>
+
+</section>
+
+<%# Google Maps script needed later for map display %>
+<%# <script src="https://maps.googleapis.com/maps/api/js?key=<%= googleMapsApiKey %>&libraries=geometry,marker,routes&callback=initRouteMap" async defer></script> %>
+<%# Script for route optimization call and map rendering %>
+<%# <script> function initRouteMap() { /* ... Map setup ... */ } </script> %>

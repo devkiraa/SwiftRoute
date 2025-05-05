@@ -30,6 +30,7 @@ const itemRoutes = require('./routes/items');
 const orderRoutes = require('./routes/orders');
 const reportingRoutes = require('./routes/reporting');
 const adminRoutes = require('./routes/admin'); // If you separate admin routes
+const deliveryRoutes = require('./routes/deliveries');
 const methodOverride = require('method-override');
 
 const app = express();
@@ -127,7 +128,7 @@ app.use('/stores', storeRoutes); // Handles /stores, /stores/new etc.
 app.use('/users', userRoutes);   // Handles /users, /users/new etc.
 app.use('/warehouses', warehouseRoutes);
 // Mount other routes as they are created:
-// app.use('/warehouses', warehouseRoutes);
+app.use('/deliveries', deliveryRoutes); 
 app.use('/items', itemRoutes);
 app.use('/orders', orderRoutes);
 app.use('/reporting', reportingRoutes);

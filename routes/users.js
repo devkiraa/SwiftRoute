@@ -229,11 +229,12 @@ router.get('/:id/edit', ensureAdminOrOwner, async (req, res) => {
        const userToEdit = await User.findById(userId).lean();
        if (!userToEdit) return res.status(404).render('error_page', { title: "Not Found", message: "User not found.", layout: false });
 
-       // Authorization: Warehouse owner can only edit users in their own company
-       if (loggedInUser.role === 'warehouse_owner' && userToEdit.companyId?.toString() !== loggedInUser.companyId?.toString()) {
-           return res.status(403).send("Access Denied: Cannot edit users outside your company.");
-       }
-
+        // Authorization check
+        if (loggedInUser.role === 'warehouse_owner' && userToEdit.companyId?.toString() !== loggedInUser.companyId?._id?.toString()) {
+            // This line is triggered because the IDs don't match
+            return res.status(403).send("Access Denied: Cannot edit users outside your company.");
+        }
+        
        // Fetch stores/companies needed for dropdowns, scoped appropriately
        let companyStores = null;
        let allCompanies = null;
