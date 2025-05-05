@@ -3,148 +3,157 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title><%= typeof locals.pageTitle !== 'undefined' ? locals.pageTitle : 'SwiftRoute Dashboard' %></title> <%# Use locals.pageTitle %>
+    <title><%= typeof locals.pageTitle !== 'undefined' ? locals.pageTitle : 'SwiftRoute' %></title> <%# Use locals.pageTitle consistently %>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"/>
     <style>
         body { font-family: 'Inter', sans-serif; }
         /* Dropdown styles */
-        .dropdown-menu {
-            transition: opacity 0.1s ease-out, transform 0.1s ease-out; /* Faster transition */
-            visibility: hidden;
-            opacity: 0;
-            transform: translateY(10px); /* Start slightly lower */
-            z-index: 50; /* Ensure it's above other content */
-        }
-        .dropdown-menu.show {
-            visibility: visible;
-            opacity: 1;
-            transform: translateY(0); /* Move to final position */
-        }
-        button, a { user-select: none; }
-        /* Active link style */
-        .sidebar-link-active {
-            background-color: #3b82f6; /* bg-blue-600 */
-            color: white;
-            font-weight: 500; /* medium */
-        }
-        /* Remove SVG-specific active style */
-        /* .sidebar-link-active svg { color: white; } */
+        .dropdown-menu { transition: opacity 0.2s ease-out, visibility 0s linear 0.2s, transform 0.2s ease-out; visibility: hidden; opacity: 0; transform: translateY(-10px); z-index: 50; }
+        .dropdown-menu.show { visibility: visible; opacity: 1; transform: translateY(0px); transition: opacity 0.2s ease-out, visibility 0s linear 0s, transform 0.2s ease-out; }
+        /* Sidebar base styles */
+        #sidebar { transition: width 0.3s ease-in-out; width: 16rem; /* w-64 */ }
+        #main-content { transition: margin-left 0.3s ease-in-out; margin-left: 16rem; /* Match sidebar width */ }
+        /* Sidebar collapsed styles */
+        #sidebar.collapsed { width: 0; }
+        #sidebar.collapsed > * { visibility: hidden; opacity: 0; } /* Hide direct children */
+        #main-content.sidebar-collapsed { margin-left: 0; }
+        /* Active link */
+        .sidebar-link-active { background-color: #3b82f6; color: white; font-weight: 500; }
     </style>
 </head>
 <body class="bg-gray-50">
 
-    <div class="flex min-h-screen">
+<div class="flex min-h-screen">
 
-        <aside class="w-64 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
-            <div class="px-6 py-4 border-b">
-                <a href="/dashboard" class="text-xl font-bold tracking-tight text-gray-800 hover:text-blue-600">SwiftRoute</a>
-            </div>
-            <nav class="flex-1 px-4 pt-4 space-y-1 overflow-y-auto">
-                <% if (locals.loggedInUser) { %>
-                    <a href="/dashboard" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath === '/dashboard' ? 'sidebar-link-active' : 'text-gray-700' %>">
-                         <span>Home</span>
-                    </a>
+    <aside id="sidebar" class="bg-white border-r border-gray-200 flex flex-col flex-shrink-0 fixed inset-y-0 left-0 z-30 overflow-hidden">
+        <div class="px-4 sm:px-6 py-4 border-b flex items-center justify-between">
+            <a href="/dashboard" class="text-xl font-bold tracking-tight text-gray-800 hover:text-blue-600 whitespace-nowrap">SwiftRoute</a>
+            <button aria-label="Notifications" class="p-1 rounded-full text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                </svg>
+            </button>
+        </div>
+        <nav class="flex-1 px-2 sm:px-4 pt-4 space-y-1 overflow-y-auto"> <% if (locals.loggedInUser) { %>
+                <a href="/dashboard" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath === '/dashboard' ? 'sidebar-link-active' : 'text-gray-700' %>">
+                    <span>Home</span>
+                 </a>
 
-                    <% if (loggedInUser.role === 'warehouse_owner') { %>
-                         <a href="/warehouses" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/warehouses') ? 'sidebar-link-active' : 'text-gray-700' %>"> <span>Warehouses</span> </a>
-                         <a href="/stores" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/stores') ? 'sidebar-link-active' : 'text-gray-700' %>"> <span>Stores</span> </a>
-                         <%# Keep Add New Store link accessible, maybe move higher? %>
-                         <%# <a href="/stores/new" class="flex items-center px-3 py-2 ..."> <span>Add New Store</span> </a> %>
-                         <a href="/items" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/items') ? 'sidebar-link-active' : 'text-gray-700' %>"> <span>Inventory</span> </a>
-                         <a href="/orders" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/orders') ? 'sidebar-link-active' : 'text-gray-700' %>"> <span>Orders (Company)</span> </a>
-                         <a href="/users" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/users') ? 'sidebar-link-active' : 'text-gray-700' %>"> <span>Users</span> </a>
-                         <a href="/reporting" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/reporting') ? 'sidebar-link-active' : 'text-gray-700' %>"> <span>Reporting</span> </a>
-                    <% } %>
-
-                     <% if (loggedInUser.role === 'store_owner') { %>
-                         <a href="/orders" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/orders') ? 'sidebar-link-active' : 'text-gray-700' %>"> <span>Orders (My Store)</span> </a>
-                         <a href="/customers" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/customers') ? 'sidebar-link-active' : 'text-gray-700' %>"> <span>Customers</span> </a>
-                         <a href="/items/store" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/items/store') ? 'sidebar-link-active' : 'text-gray-700' %>"> <span>Inventory</span> </a>
-                         <a href="/users/store" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/users/store') ? 'sidebar-link-active' : 'text-gray-700' %>"> <span>Employees</span> </a>
-                         <a href="/reporting/store" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/reporting/store') ? 'sidebar-link-active' : 'text-gray-700' %>"> <span>Reporting</span> </a>
-                    <% } %>
-
-                    <% if (loggedInUser.role === 'employee') { %>
-                          <a href="/orders" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/orders') ? 'sidebar-link-active' : 'text-gray-700' %>"> <span>Orders</span> </a>
-                          <a href="/customers" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/customers') ? 'sidebar-link-active' : 'text-gray-700' %>"> <span>Customers</span> </a>
-                          <a href="/items/store" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/items/store') ? 'sidebar-link-active' : 'text-gray-700' %>"> <span>Inventory</span> </a>
-                    <% } %>
-
-                     <% if (loggedInUser.role === 'delivery_partner') { %>
-                          <a href="/deliveries/my" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/deliveries/my') ? 'sidebar-link-active' : 'text-gray-700' %>"> <span>My Deliveries</span> </a>
-                          <a href="/deliveries/map" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/deliveries/map') ? 'sidebar-link-active' : 'text-gray-700' %>"> <span>Route Map</span> </a>
-                    <% } %>
-
-                    <% if (loggedInUser.role === 'admin') { %>
-                          <a href="/admin/companies" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/admin/companies') ? 'sidebar-link-active' : 'text-gray-700' %>"> <span>Companies</span> </a>
-                          <a href="/admin/users" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/admin/users') ? 'sidebar-link-active' : 'text-gray-700' %>"> <span>All Users</span> </a>
-                           <%# Add other admin links: All Warehouses, Stores, Orders? %>
-                          <a href="/admin/settings" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/admin/settings') ? 'sidebar-link-active' : 'text-gray-700' %>"> <span>Platform Settings</span> </a>
-                    <% } %>
+                 <% if (loggedInUser.role === 'warehouse_owner') { %>
+                     <a href="/warehouses" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/warehouses') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Warehouses</span></a>
+                     <a href="/stores" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/stores') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Stores</span></a>
+                     <a href="/items" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/items') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Inventory</span></a>
+                     <a href="/orders" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/orders') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Orders (Company)</span></a>
+                     <a href="/users" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/users') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Users</span></a>
+                     <a href="/reporting" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/reporting') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Reporting</span></a>
+                <% } else if (loggedInUser.role === 'store_owner') { %>
+                     <a href="/orders" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/orders') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Orders (My Store)</span></a>
+                     <a href="/customers" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/customers') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Customers</span></a>
+                     <a href="/items/store" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/items/store') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Inventory</span></a>
+                     <a href="/users/store" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/users/store') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Employees</span></a>
+                     <a href="/reporting/store" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/reporting/store') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Reporting</span></a>
+                <% } else if (loggedInUser.role === 'employee') { %>
+                     <a href="/orders" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/orders') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Orders</span></a>
+                     <a href="/customers" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/customers') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Customers</span></a>
+                     <a href="/items/store" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/items/store') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Inventory</span></a>
+                <% } else if (loggedInUser.role === 'delivery_partner') { %>
+                     <a href="/deliveries/my" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/deliveries/my') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>My Deliveries</span></a>
+                     <a href="/deliveries/map" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/deliveries/map') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Route Map</span></a>
+                <% } else if (loggedInUser.role === 'admin') { %>
+                      <a href="/admin/companies" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/admin/companies') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Companies</span></a>
+                      <a href="/admin/users" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/admin/users') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>All Users</span></a>
+                      <a href="/admin/settings" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/admin/settings') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Platform Settings</span></a>
                 <% } %>
-            </nav>
+            <% } %>
+        </nav>
 
-            <div class="relative mt-auto px-4 py-3 border-t border-gray-200">
-                 <% if (locals.loggedInUser) { %>
-                     <button id="profileToggle" class="w-full flex items-center text-left space-x-3 focus:outline-none rounded-md p-2 hover:bg-gray-100" aria-expanded="false" aria-controls="profileDropdown">
-                         <div class="flex-1 overflow-hidden">
-                             <p class="text-sm font-medium text-gray-800 truncate"><%= loggedInUser.username %></p>
-                             <p class="text-xs text-gray-500 truncate capitalize">
-                                 <%# Adjust fallback logic if needed %>
-                                 <%= locals.companyDetails ? locals.companyDetails.companyName : (loggedInUser.role ? loggedInUser.role.replace(/_/g, ' ') : 'N/A') %>
-                             </p>
-                         </div>
-                         <svg id="profileArrow" class="w-4 h-4 ml-auto transform transition-transform duration-200 flex-shrink-0 text-gray-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
-                     </button>
-                     <div id="profileDropdown" class="dropdown-menu absolute bottom-full left-0 mb-1 w-[calc(100%-2rem)] mx-4 bg-white border border-gray-200 rounded-md shadow-lg py-1">
-                         <a href="/profile" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">My Profile</a>
-                         <a href="/settings" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Settings</a>
-                         <hr class="my-1 border-gray-200">
-                         <form action="/logout" method="POST" class="w-full">
-                             <button type="submit" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Logout</button>
-                         </form>
-                     </div>
-                 <% } else { %>
-                     <a href="/login" class="text-sm text-blue-600 hover:underline">Login</a>
-                 <% } %>
-            </div>
-        </aside>
+        <div class="relative mt-auto px-4 py-3 border-t border-gray-200">
+            <% if (locals.loggedInUser) { %>
+                <button id="profileToggle" type="button" class="w-full flex items-center justify-start space-x-3 focus:outline-none rounded-md p-2 hover:bg-gray-100" onclick="toggleProfileDropdown(event)" aria-expanded="false" aria-controls="profileDropdown">
+                    <div class="text-left overflow-hidden flex-1">
+                        <p class="text-sm font-medium text-gray-800 truncate"><%= loggedInUser.username %></p>
+                        <p class="text-xs text-gray-500 truncate capitalize">
+                             <%= locals.companyDetails ? locals.companyDetails.companyName : (loggedInUser.role ? loggedInUser.role.replace(/_/g, ' ') : 'N/A') %>
+                         </p>
+                    </div>
+                    <svg id="profileArrow" class="w-4 h-4 ml-auto transform transition-transform duration-200 flex-shrink-0 text-gray-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
+                </button>
+                <div id="profileDropdown" class="dropdown-menu absolute bottom-full left-0 mb-1 w-[calc(100%-2rem)] mx-4 bg-white border border-gray-200 rounded-md shadow-lg py-1">
+                    <a href="/profile" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">My Profile</a>
+                    <a href="/settings" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Settings</a>
+                    <hr class="my-1 border-gray-200">
+                    <form action="/logout" method="POST" class="w-full">
+                        <button type="submit" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Logout</button>
+                    </form>
+                </div>
+            <% } else { %>
+                <p class="text-sm text-gray-500">Not logged in.</p> <a href="/login" class="text-sm text-blue-600 hover:underline">Login</a>
+            <% } %>
+        </div>
+    </aside>
 
-        <div class="flex-1 flex flex-col overflow-hidden">
-            <%- body %> </div>
+    <div id="main-content" class="flex-1 flex flex-col overflow-hidden">
 
+         <div class="sticky top-0 z-20 bg-white border-b border-gray-200 px-4 py-3 md:hidden"> <button id="hamburger-button" aria-label="Toggle sidebar" class="p-1 rounded text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500">
+                 <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"> <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /> </svg>
+             </button>
+         </div>
+
+        <%- body %> <%# Page content gets injected here %>
     </div>
 
-    <script>
-        const profileToggleButton = document.getElementById('profileToggle');
-        const profileDropdownMenu = document.getElementById('profileDropdown');
-        const profileArrow = document.getElementById('profileArrow');
+</div>
 
-        function toggleProfileDropdown() {
-            const isExpanded = profileToggleButton.getAttribute('aria-expanded') === 'true';
-            profileToggleButton.setAttribute('aria-expanded', !isExpanded);
-            profileDropdownMenu.classList.toggle('show');
-            if (profileArrow) {
-                 profileArrow.classList.toggle('rotate-180'); // Rotate arrow
+<script>
+    // --- Profile Dropdown Logic ---
+    const profileButton = document.getElementById('profileToggle');
+    const profileDropdown = document.getElementById('profileDropdown');
+    const profileArrow = document.getElementById('profileArrow');
+
+    function toggleProfileDropdown(event) {
+        event.stopPropagation(); // Prevent click from closing menu immediately
+        const isExpanded = profileButton.getAttribute('aria-expanded') === 'true';
+        profileButton.setAttribute('aria-expanded', !isExpanded);
+        profileDropdown.classList.toggle('show');
+        profileArrow.classList.toggle('rotate-180'); // Rotate arrow
+    }
+
+    // Close dropdown if clicking outside
+    document.addEventListener('click', function(event) {
+        if (profileButton && profileDropdown && !profileButton.contains(event.target) && !profileDropdown.contains(event.target)) {
+            if (profileDropdown.classList.contains('show')) {
+                profileButton.setAttribute('aria-expanded', 'false');
+                profileDropdown.classList.remove('show');
+                profileArrow.classList.remove('rotate-180');
             }
         }
+    });
 
-        if (profileToggleButton && profileDropdownMenu) {
-             profileToggleButton.addEventListener('click', (event) => {
-                 event.stopPropagation(); // Prevent click from immediately closing dropdown
-                 toggleProfileDropdown();
-             });
+    // --- Sidebar Toggle Logic ---
+    const sidebar = document.getElementById('sidebar');
+    const mainContent = document.getElementById('main-content');
+    const hamburgerButton = document.getElementById('hamburger-button');
 
-             // Close dropdown if clicking outside
-             document.addEventListener('click', (event) => {
-                 if (!profileDropdownMenu.contains(event.target) && !profileToggleButton.contains(event.target)) {
-                     if (profileDropdownMenu.classList.contains('show')) {
-                         toggleProfileDropdown(); // Close it
-                     }
-                 }
-             });
-        }
-     </script>
+    if (hamburgerButton && sidebar && mainContent) {
+         hamburgerButton.addEventListener('click', (e) => {
+             e.stopPropagation();
+             sidebar.classList.toggle('collapsed');
+             mainContent.classList.toggle('sidebar-collapsed');
+             // Persist state? Could use localStorage later
+         });
+    }
+
+     // Optional: Close sidebar if clicking outside on mobile/tablet?
+     // document.addEventListener('click', function(event) {
+     //     if (sidebar && mainContent && !sidebar.contains(event.target) && !hamburgerButton.contains(event.target)) {
+     //         if (!sidebar.classList.contains('collapsed') && window.innerWidth < 768) { // Only if not collapsed and on smaller screens
+     //             sidebar.classList.add('collapsed');
+     //             mainContent.classList.add('sidebar-collapsed');
+     //         }
+     //     }
+     // });
+
+</script>
 </body>
 </html>
