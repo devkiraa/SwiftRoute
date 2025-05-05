@@ -26,18 +26,42 @@
         </thead>
         <tbody class="divide-y text-sm text-gray-700">
           <% if (tableData && tableData.length > 0) { %>
-            <% tableData.forEach(item => { %> <%# Assuming item is a user %>
+              <% tableData.forEach(user => { %>
               <tr class="hover:bg-gray-50">
-                   <td class="px-4 py-3 whitespace-nowrap"> <div class="flex items-center space-x-3"> <img src="<%= item.avatarUrl || '...' %>" alt="Avatar" class="w-8 h-8 ..."/> <div> <p class="font-medium text-gray-900"><%= item.username %></p> <p class="text-xs text-gray-500"><%= item.email %></p> </div> </div> </td>
-                   <td class="px-4 py-3"> <span class="inline-block px-2 py-1 text-xs font-medium rounded-full <% /* Role class logic */ %>"><%= item.role.replace(/_/g, ' ') %></span> </td>
-                   <td class="px-4 py-3"> <%= item.store ? item.store.storeName : '-' %> </td>
-                   <td class="px-4 py-3 whitespace-nowrap"> <a href="/users/<%= item._id %>/edit" class="text-blue-600 ...">Edit</a> </td>
+                  <td class="px-4 py-3 whitespace-nowrap">
+                      <div class="flex items-center space-x-3">
+                          <img src="<%= user.avatarUrl || 'https://static-00.iconduck.com/assets.00/profile-icon-2048x2048-yj5zf8da.png' %>" alt="Avatar" class="w-8 h-8 rounded-full bg-gray-200 object-cover flex-shrink-0"/>
+                          <div>
+                              <p class="font-medium text-gray-900"><%= user.username %></p>
+                              <p class="text-xs text-gray-500"><%= user.email %></p>
+                          </div>
+                      </div>
+                  </td>
+                  <td class="px-4 py-3">
+                      <% let roleClass = 'bg-gray-100 text-gray-700'; switch (user.role) { case 'warehouse_owner': roleClass = 'bg-indigo-100 text-indigo-700'; break; case 'store_owner': roleClass = 'bg-green-100 text-green-700'; break; case 'employee': roleClass = 'bg-yellow-100 text-yellow-700'; break; case 'delivery_partner': roleClass = 'bg-purple-100 text-purple-700'; break; case 'admin': roleClass = 'bg-red-100 text-red-700'; break; } %>
+                      <span class="inline-block px-2 py-1 text-xs font-medium rounded-full <%= roleClass %>"><%= user.role.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) %></span>
+                  </td>
+                  <td class="px-4 py-3">
+                      <%= user.store ? user.store.storeName : '-' %>
+                  </td>
+                  <td class="px-4 py-3 whitespace-nowrap">
+                      <a href="/users/<%= user._id %>/edit" class="text-blue-600 hover:text-blue-800 hover:underline text-xs font-medium">Edit</a>
+      
+                      <%# --- Add Delete Form --- %>
+                      <%# Prevent deleting self or admins if not admin %>
+                      <% if (locals.loggedInUser && locals.loggedInUser._id.toString() !== user._id.toString() && (locals.loggedInUser.role === 'admin' || user.role !== 'admin') ) { %>
+                      <form action="/users/<%= user._id %>?_method=DELETE" method="POST" class="inline ml-2" onsubmit="return confirm('Are you sure you want to delete user <%= user.username %>? This cannot be undone.');">
+                          <button type="submit" class="text-red-600 hover:text-red-800 hover:underline text-xs font-medium">Delete</button>
+                      </form>
+                      <% } %>
+                       <%# --- End Delete Form --- %>
+                  </td>
               </tr>
-            <% }) %>
+              <% }) %>
           <% } else { %>
-            <tr><td colspan="4" class="text-center py-10 text-gray-500">No users found.</td></tr>
+              <tr><td colspan="4" class="text-center py-10 text-gray-500">No users found.</td></tr>
           <% } %>
-        </tbody>
+      </tbody>  
       </table>
     </div>
 
