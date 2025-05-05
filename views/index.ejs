@@ -1,93 +1,109 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SwiftRoute - Optimize Your Delivery Routes</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>SwiftRoute - Optimize Your Delivery Logistics</title> <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"/>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        /* Add any custom styles if needed */
+    </style>
 </head>
-<body class="bg-gray-50">
-  <!-- Header -->
-  <header class="bg-indigo-600 text-white py-4">
-    <div class="container mx-auto flex justify-between items-center">
-      <h1 class="text-2xl font-extrabold">SwiftRoute</h1>
-      <nav class="space-x-6">
-        <a class="hover:underline" href="/">Home</a>
-        <a class="hover:underline" href="/features">Features</a>
-        <a class="hover:underline" href="/pricing">Pricing</a>
-        <a class="hover:underline" href="/login">Login</a>
-      </nav>
-    </div>
-  </header>
+<body class="bg-gray-50 text-gray-800">
 
-  <!-- Hero Section -->
-  <section class="bg-white">
-    <div class="container mx-auto px-6 py-16 flex flex-col-reverse md:flex-row items-center">
-      <!-- Text Content -->
-      <div class="w-full md:w-1/2">
-        <h2 class="text-4xl font-extrabold text-gray-800 mb-4">
-          Deliver Faster,<br />Save More Fuel with SwiftRoute
-        </h2>
-        <p class="text-gray-600 mb-8">
-          SwiftRoute optimizes your delivery routes in real-time to boost efficiency and reduce operational costs.
-          Manage your inventory and deliveries all in one seamless solution.
-        </p>
-        <a href="/register" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-full transition">
-          Get Started Now
-        </a>
-      </div>
-      <!-- Visual / Illustration -->
-      <div class="w-full md:w-1/2 mb-8 md:mb-0">
-        <img src="https://via.placeholder.com/500x400?text=SwiftRoute+Dashboard" alt="SwiftRoute Dashboard" class="w-full rounded-lg shadow-lg" />
-      </div>
-    </div>
-  </section>
-
-  <!-- Features Section -->
-  <section class="bg-gray-100 py-12">
-    <div class="container mx-auto px-6">
-      <h3 class="text-3xl font-bold text-center text-gray-800 mb-8">Key Features</h3>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div class="bg-white p-6 rounded-lg shadow">
-          <h4 class="text-xl font-semibold mb-2">Real-Time Optimization</h4>
-          <p class="text-gray-600">
-            Automatically generate efficient routes with our advanced algorithms that cut down on travel time and fuel costs.
-          </p>
+    <header class="bg-white shadow-sm sticky top-0 z-40">
+        <div class="container mx-auto px-6 py-4 flex justify-between items-center">
+            <a href="/" class="text-2xl font-bold text-blue-600 hover:text-blue-700">SwiftRoute</a>
+            <nav class="hidden md:flex space-x-6">
+                <a class="text-gray-600 hover:text-blue-600" href="#features">Features</a>
+                <a class="text-gray-600 hover:text-blue-600" href="#pricing">Pricing</a>
+                <a class="text-gray-600 hover:text-blue-600" href="/login">Login</a>
+                <a class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition text-sm" href="/register">Get Started</a>
+            </nav>
+            <button class="md:hidden p-2 text-gray-600 hover:text-blue-600" aria-label="Open Menu">
+                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+            </button>
         </div>
-        <div class="bg-white p-6 rounded-lg shadow">
-          <h4 class="text-xl font-semibold mb-2">Integrated Mapping</h4>
-          <p class="text-gray-600">
-            Use Google Maps integration to view, plan, and manage store locations and deliveries all in one place.
-          </p>
-        </div>
-        <div class="bg-white p-6 rounded-lg shadow">
-          <h4 class="text-xl font-semibold mb-2">Scalable & Secure</h4>
-          <p class="text-gray-600">
-            Designed for companies of all sizes, SwiftRoute provides robust security and seamless scalability to grow with your business.
-          </p>
-        </div>
-      </div>
-    </div>
-  </section>
+    </header>
 
-  <!-- Call-to-Action Section -->
-  <section class="bg-indigo-600 py-16">
-    <div class="container mx-auto px-6 text-center">
-      <h3 class="text-3xl font-bold text-white mb-4">Ready to Revolutionize Your Deliveries?</h3>
-      <p class="text-indigo-200 mb-8">
-        Join SwiftRoute today and experience the future of efficient route management.
-      </p>
-      <a href="/register" class="bg-white text-indigo-600 font-bold py-3 px-8 rounded-full shadow-lg hover:shadow-xl transition">
-        Sign Up Now
-      </a>
-    </div>
-  </section>
+    <section class="bg-gradient-to-br from-blue-50 to-purple-100">
+        <div class="container mx-auto px-6 pt-16 pb-20 md:pt-24 md:pb-28 flex flex-col lg:flex-row items-center">
+            <div class="w-full lg:w-1/2 text-center lg:text-left mb-10 lg:mb-0 lg:pr-10">
+                <h1 class="text-4xl md:text-5xl lg:text-6xl font-extrabold text-gray-900 mb-4 leading-tight">
+                    Deliver Smarter,<br /> Not Harder.
+                </h1>
+                <p class="text-lg md:text-xl text-gray-600 mb-8 max-w-xl mx-auto lg:mx-0">
+                    SwiftRoute provides intelligent route optimization and seamless inventory management to streamline your logistics, reduce costs, and delight your customers.
+                </p>
+                <div class="flex flex-col sm:flex-row justify-center lg:justify-start gap-4">
+                    <a href="/register" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg transition duration-200 text-center text-lg">
+                        Start Free Trial
+                    </a>
+                     <a href="#features" class="bg-white hover:bg-gray-100 text-blue-600 font-semibold py-3 px-8 rounded-lg transition duration-200 border border-gray-300 text-center text-lg">
+                        Learn More
+                    </a>
+                </div>
+            </div>
+            <div class="w-full lg:w-1/2">
+                 <img src="https://images.unsplash.com/photo-1604782286058-5f0109b54f7a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=MnwyODE1MDl8MHwxfGFsbHx8fHx8fHx8fDE2MjYxOTI0Mzk&ixlib=rb-1.2.1&q=80&w=1080" alt="Delivery van on a map" class="w-full rounded-lg shadow-xl object-cover" />
+            </div>
+        </div>
+    </section>
 
-  <!-- Footer -->
-  <footer class="bg-gray-800 text-white py-6">
-    <div class="container mx-auto text-center">
-      <p>&copy; 2025 SwiftRoute. All rights reserved.</p>
-    </div>
-  </footer>
+    <section id="features" class="bg-white py-16 md:py-20">
+        <div class="container mx-auto px-6">
+            <h2 class="text-3xl font-bold text-center text-gray-800 mb-12">Why Choose SwiftRoute?</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div class="text-center p-6">
+                     <div class="bg-blue-100 text-blue-600 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                          <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    </div>
+                    <h4 class="text-xl font-semibold mb-2">Optimized Routing</h4>
+                    <p class="text-gray-600">
+                        Generate the most efficient multi-stop routes using advanced algorithms, saving time and fuel costs daily.
+                    </p>
+                </div>
+                <div class="text-center p-6">
+                    <div class="bg-blue-100 text-blue-600 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                          <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                     </div>
+                    <h4 class="text-xl font-semibold mb-2">Inventory Management</h4>
+                    <p class="text-gray-600">
+                        Track stock levels across multiple warehouses, manage items, and integrate inventory with your orders seamlessly.
+                    </p>
+                </div>
+                <div class="text-center p-6">
+                     <div class="bg-blue-100 text-blue-600 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                          <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+                     </div>
+                    <h4 class="text-xl font-semibold mb-2">Visual Map Interface</h4>
+                    <p class="text-gray-600">
+                         Leverage interactive maps (powered by OpenStreetMap & Leaflet) to visualize routes, store locations, and delivery progress.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="pricing" class="bg-blue-600 py-16 md:py-20"> <div class="container mx-auto px-6 text-center">
+            <h2 class="text-3xl font-bold text-white mb-4">Ready to Streamline Your Deliveries?</h2>
+            <p class="text-blue-100 mb-8 max-w-2xl mx-auto">
+                Sign up for SwiftRoute today and take control of your logistics with optimized routes and efficient inventory management.
+            </p>
+            <a href="/register" class="bg-white text-blue-700 font-bold py-3 px-8 rounded-lg shadow-lg hover:shadow-xl hover:bg-gray-100 transition duration-200 text-lg">
+                Get Started - It's Free! <%# Update text if pricing exists %>
+            </a>
+        </div>
+    </section>
+
+    <footer class="bg-gray-800 text-gray-400 py-8">
+        <div class="container mx-auto text-center text-sm">
+            <p>&copy; <%= new Date().getFullYear() %> SwiftRoute. All rights reserved.</p>
+             </div>
+    </footer>
+
+    <%# Add JS for mobile menu toggle if needed %>
+
 </body>
 </html>

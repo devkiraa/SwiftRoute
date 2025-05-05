@@ -1,43 +1,72 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Login - Warehouse Management System</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    /* Custom font for added flair (optional) */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-    body { font-family: 'Inter', sans-serif; }
-  </style>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Login - SwiftRoute</title> <%# Updated Title %>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"/>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        /* Ensure background image covers the area */
+        .bg-login-image {
+            background-image: url('https://images.unsplash.com/photo-1743401853978-d033df48fab6?q=80&w=1932&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D'); /* Placeholder Image - Replace with your own! */
+            background-size: cover;
+            background-position: center;
+        }
+    </style>
 </head>
-<body class="min-h-screen bg-gradient-to-br from-blue-400 to-purple-600 flex items-center justify-center">
-  <!-- Centered Card Container -->
-  <div class="bg-white rounded-lg shadow-xl w-full max-w-md">
-    <!-- Header Section -->
-    <header class="bg-blue-600 p-6 rounded-t-lg">
-      <h1 class="text-2xl font-bold text-white text-center">Welcome Back</h1>
-      <p class="mt-2 text-center text-blue-100">Login to access your account</p>
-    </header>
-    <!-- Login Form -->
-    <main class="p-6">
-      <form action="/login" method="POST" class="space-y-5">
-        <div>
-          <label class="block text-gray-700 text-sm font-semibold mb-2" for="email">Email</label>
-          <input type="email" id="email" name="email" placeholder="you@example.com" required class="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-300" />
+<body class="min-h-screen"> <%# Remove gradient from body %>
+
+<div class="flex min-h-screen">
+
+    <div class="hidden lg:block lg:w-3/4 bg-login-image">
+        <%# Optional: Add overlay or content on top of image if desired %>
         </div>
-        <div>
-          <label class="block text-gray-700 text-sm font-semibold mb-2" for="password">Password</label>
-          <input type="password" id="password" name="password" placeholder="••••••••" required class="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-300" />
+
+    <div class="w-full lg:w-1/4 bg-white flex flex-col items-center justify-center p-8 sm:p-12">
+        <div class="w-full max-w-md"> <%# Max width for form container %>
+            <div class="text-center mb-8">
+                 <a href="/" class="text-3xl font-bold tracking-tight text-blue-600">SwiftRoute</a>
+                 <p class="mt-2 text-sm text-gray-600">Welcome back! Please login.</p>
+            </div>
+
+            <% if (typeof error === 'string' && error) { %>
+                 <div class="mb-4 bg-red-100 border-l-4 border-red-500 text-red-700 p-4" role="alert">
+                     <p><%= error %></p>
+                 </div>
+             <% } %>
+              <% if (typeof message === 'string' && message) { %> <%# Generic message support %>
+                 <div class="mb-4 bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4" role="alert">
+                     <p><%= message %></p>
+                 </div>
+             <% } %>
+
+            <form action="/login" method="POST" class="space-y-5">
+                <div>
+                    <label class="block text-gray-700 text-sm font-semibold mb-2" for="email">Email Address</label>
+                    <input type="email" id="email" name="email" placeholder="you@example.com" required
+                           class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200" />
+                </div>
+                <div>
+                    <label class="block text-gray-700 text-sm font-semibold mb-2" for="password">Password</label>
+                    <input type="password" id="password" name="password" placeholder="••••••••" required
+                           class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200" />
+                    </div>
+                <button type="submit"
+                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                    Login
+                </button>
+            </form>
+
+            <p class="mt-6 text-center text-gray-600 text-sm">
+                Don't have an account?
+                <a href="/register" class="text-blue-600 font-semibold hover:underline">Register here</a>.
+            </p>
         </div>
-        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition">
-          Login
-        </button>
-      </form>
-      <p class="mt-4 text-center text-gray-600 text-sm">
-        Don't have an account? <a href="/register" class="text-blue-600 font-semibold hover:underline">Register here</a>.
-      </p>
-    </main>
-  </div>
+    </div>
+
+</div>
+
 </body>
 </html>

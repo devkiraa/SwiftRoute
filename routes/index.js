@@ -80,83 +80,141 @@ router.post('/login', async (req, res) => { /* ... keep login logic ... */
 
 
 // --- Dynamic Dashboard Route ---
-// Renders the appropriate 'home' view content within the layout
+// --- Dashboard Route ---
 router.get('/dashboard', ensureAuthenticated, async (req, res) => {
-  try {
-    const loggedInUser = res.locals.loggedInUser; // From global middleware
-    let viewData = {
-        title: 'Dashboard - SwiftRoute',
-        stats: {},
-        // No table data needed for the generic dashboard home usually
-        // companyDetails and storeDetails might be needed if displaying them prominently
-        companyDetails: res.locals.companyDetails, // Get from global middleware
-        storeDetails: null // Fetch if needed based on role, or rely on global middleware if added
-    };
+    const loggedInUser = res.locals.loggedInUser; // Get user from global middleware
+    const companyId = loggedInUser.companyId?._id || loggedInUser.companyId; // Handle populated or just ID
+    const storeId = loggedInUser.storeId;
 
-    // --- Fetch stats based on ROLE ---
-    // (This logic is duplicated from previous step, ensure it's accurate)
-    switch (loggedInUser.role) {
-        case 'warehouse_owner':
-            if (!loggedInUser.companyId) throw new Error('Warehouse owner missing company association.');
-            const [ stores, warehouses ] = await Promise.all([
-                Store.find({ companyId: loggedInUser.companyId }).lean(),
-                Warehouse.find({ companyId: loggedInUser.companyId }).lean()
-            ]);
-            const whIds = warehouses.map(wh => wh._id);
-            const stIds = stores.map(s => s._id);
-            const [ itemsResult, pendingOrders ] = await Promise.all([
-                 Item.aggregate([ { $match: { warehouseId: { $in: whIds } } }, { $group: { _id: null, totalQuantity: { $sum: "$quantity" } } } ]),
-                 Order.countDocuments({ storeId: { $in: stIds }, orderStatus: { $in: ['pending', 'confirmed'] } })
-            ]);
-            viewData.stats = { totalStores: stores.length, totalWarehouses: warehouses.length, totalItemCount: itemsResult[0]?.totalQuantity || 0, pendingOrdersCompanyWide: pendingOrders };
-            viewData.title = `Dashboard - ${res.locals.companyDetails?.companyName || 'Company'}`;
-            break;
-        case 'store_owner':
-             if (!loggedInUser.storeId) throw new Error('Store owner missing store association.');
-             // Fetch store details if not already done by global middleware
-             viewData.storeDetails = await Store.findById(loggedInUser.storeId).lean();
-             if (!viewData.storeDetails) throw new Error('Store not found.');
-             viewData.title = `Store Dashboard - ${viewData.storeDetails.storeName}`;
-             const [ custCount, storeOrderCount, empCount ] = await Promise.all([
-                 User.countDocuments({ storeId: loggedInUser.storeId, role: 'customer' }),
-                 Order.countDocuments({ storeId: loggedInUser.storeId, orderStatus: { $in: ['pending', 'confirmed'] } }),
-                 User.countDocuments({ storeId: loggedInUser.storeId, role: 'employee' })
-             ]);
-             viewData.stats = { totalCustomers: custCount, pendingOrdersStore: storeOrderCount, totalEmployees: empCount };
-            break;
-        case 'employee':
-            if (!loggedInUser.storeId) throw new Error('Employee missing store association.');
-            viewData.storeDetails = await Store.findById(loggedInUser.storeId).lean();
-            if (!viewData.storeDetails) throw new Error('Store not found.');
-            viewData.title = `Employee Dashboard - ${viewData.storeDetails.storeName}`;
-            // Fetch stats relevant to employee? Maybe pending tasks/orders?
-             const pendingStoreOrdersEmp = await Order.countDocuments({ storeId: loggedInUser.storeId, orderStatus: { $in: ['pending', 'confirmed'] } });
-             viewData.stats = { pendingStoreOrders: pendingStoreOrdersEmp };
-            break;
-        case 'delivery_partner':
-             viewData.title = `Delivery Dashboard`;
-             const assignedOrdersCount = await Order.countDocuments({ assignedDeliveryPartnerId: loggedInUser._id, orderStatus: { $in: ['shipped', 'confirmed'] } });
-             viewData.stats = { pendingDeliveries: assignedOrdersCount };
-            break;
-        case 'admin':
-             viewData.title = `Admin Dashboard`;
-             const [ compCount, userCount ] = await Promise.all([ Company.countDocuments(), User.countDocuments() ]);
-             viewData.stats = { totalCompanies: compCount, totalUsers: userCount };
-            break;
-        default:
-            throw new Error('Access Denied: Unknown user role.');
+    let dashboardData = { stats: {}, recentOrders: [] }; // Initialize data object
+    let canCreateOrder = false; // Default
+    let viewTitle = 'Dashboard';
+
+    try {
+        console.log(`Loading dashboard for role: ${loggedInUser.role}`);
+
+        switch (loggedInUser.role) {
+            case 'warehouse_owner':
+            case 'admin':
+                canCreateOrder = true; // Owners/Admins can create manual orders
+                viewTitle = loggedInUser.role === 'admin' ? 'Platform Dashboard' : 'Company Dashboard';
+                const companyQuery = loggedInUser.role === 'admin' ? {} : { companyId: companyId };
+                const storeIdsForCompany = (await Store.find(companyQuery).select('_id').lean()).map(s => s._id);
+
+                // Fetch company-wide stats
+                 const [pendingCount, confirmedCount, shippedCount, storeCount, warehouseCount, itemCount, driverCount] = await Promise.all([
+                    Order.countDocuments({ storeId: { $in: storeIdsForCompany }, orderStatus: 'pending' }),
+                    Order.countDocuments({ storeId: { $in: storeIdsForCompany }, orderStatus: 'confirmed' }),
+                    Order.countDocuments({ storeId: { $in: storeIdsForCompany }, orderStatus: 'shipped' }),
+                    Store.countDocuments(companyQuery),
+                    Warehouse.countDocuments(companyQuery),
+                    Item.countDocuments({ companyId: companyId }), // Assumes Item has companyId
+                    User.countDocuments({ companyId: companyId, role: 'delivery_partner' })
+                 ]);
+
+                 dashboardData.stats = {
+                     'Pending Orders': pendingCount,
+                     'Confirmed Orders': confirmedCount,
+                     'Shipped Orders': shippedCount,
+                     'Stores': storeCount,
+                     'Warehouses': warehouseCount,
+                     'Inventory Items': itemCount,
+                     'Delivery Partners': driverCount,
+                 };
+                // Fetch recent orders
+                 dashboardData.recentOrders = await Order.find({ storeId: { $in: storeIdsForCompany }})
+                    .sort({ placedDate: -1 })
+                    .limit(5)
+                    .populate('storeId', 'storeName')
+                    .lean();
+                break;
+
+            case 'store_owner':
+            case 'employee':
+                canCreateOrder = true; // Store users can create manual orders
+                viewTitle = 'Store Dashboard';
+                if (!storeId) throw new Error("User not assigned to a store.");
+
+                // Fetch store-specific stats
+                const [storePending, storeConfirmed, storeShipped, storeDelivered] = await Promise.all([
+                    Order.countDocuments({ storeId: storeId, orderStatus: 'pending' }),
+                    Order.countDocuments({ storeId: storeId, orderStatus: 'confirmed' }),
+                    Order.countDocuments({ storeId: storeId, orderStatus: 'shipped' }),
+                    Order.countDocuments({ storeId: storeId, orderStatus: 'delivered' })
+                ]);
+                dashboardData.stats = {
+                    'Pending Orders': storePending,
+                    'Confirmed Orders': storeConfirmed,
+                    'Shipped Orders': storeShipped,
+                    'Delivered Orders': storeDelivered,
+                };
+                 // Fetch recent orders for this store
+                 dashboardData.recentOrders = await Order.find({ storeId: storeId })
+                     .sort({ placedDate: -1 })
+                     .limit(5)
+                     .populate('storeId', 'storeName') // Still useful maybe
+                     .lean();
+                break;
+
+            case 'delivery_partner':
+                viewTitle = 'My Deliveries Dashboard';
+                canCreateOrder = false; // Drivers don't create orders
+                // Fetch delivery-specific stats
+                const [pickupCount, outForDeliveryCount] = await Promise.all([
+                     Order.countDocuments({ assignedDeliveryPartnerId: loggedInUser._id, orderStatus: 'confirmed' }),
+                     Order.countDocuments({ assignedDeliveryPartnerId: loggedInUser._id, orderStatus: 'shipped' })
+                 ]);
+                 dashboardData.stats = {
+                     'Orders Ready for Pickup': pickupCount,
+                     'Orders Out for Delivery': outForDeliveryCount,
+                 };
+                 // Fetch current deliveries
+                 dashboardData.recentOrders = await Order.find({ assignedDeliveryPartnerId: loggedInUser._id, orderStatus: { $in: ['confirmed', 'shipped'] } })
+                     .sort({ placedDate: 1 }) // Sort oldest first for delivery sequence?
+                     .limit(5)
+                     .populate('storeId', 'storeName')
+                     .lean();
+                break;
+
+            default:
+                // Handle unexpected roles
+                viewTitle = 'Dashboard';
+                dashboardData.stats = { Info: "No specific stats for your role." };
+        }
+
+        res.render('dashboard', { // Renders views/dashboard.ejs
+            title: viewTitle,
+            stats: dashboardData.stats, // Pass the specific stats
+            recentOrders: dashboardData.recentOrders, // Pass recent orders
+            canCreateOrder: canCreateOrder, // Pass flag for button visibility
+            // loggedInUser, companyDetails, storeDetails are available via res.locals from global middleware
+            layout: './layouts/dashboard_layout'
+        });
+
+    } catch (err) {
+        console.error("Error loading dashboard:", err);
+        res.status(500).render('error_page', { title: "Error", message: `Failed to load dashboard: ${err.message}`, layout: false });
     }
-
-    // Render the 'home' specific view using the layout
-    res.render('dashboard_home', viewData); // Render views/dashboard_home.ejs
-
-  } catch (err) {
-    console.error(`Dashboard loading error for user ${req.session?.userId || 'UNKNOWN'}:`, err);
-    res.status(err.message.includes('not found') ? 404 : 500).send(`Could not load dashboard: ${err.message}`);
-  }
 });
 
-// POST route for logout (keep as is)
-router.post('/logout', (req, res, next) => { /* ... keep logout logic ... */ });
+// --- Logout Route ---
+router.post('/logout', (req, res, next) => {
+    // Destroy the session
+    req.session.destroy((err) => {
+        if (err) {
+            // Handle error, perhaps log it and redirect anyway or show error page
+            console.error("Error destroying session:", err);
+            // Optionally pass an error message to the login page
+            return res.redirect('/?error=logout_failed');
+        }
+        // Clear the cookie associated with the session (optional but good practice)
+        // The cookie name often defaults to 'connect.sid' but check your session config
+        res.clearCookie('connect.sid'); // Replace 'connect.sid' if you used a different name
+
+        console.log("User logged out successfully.");
+        // Redirect to the login page after session is destroyed
+        res.redirect('/'); // Redirect to home/login page
+    });
+});
 
 module.exports = router;
