@@ -510,6 +510,120 @@ router.get('/:id/edit', ensureCanManageOrder, async (req, res) => {
     }
 });
 
+// PUT /orders/:id/status - Update Order Status (WITH STOCK LOGIC)
+router.put('/:id/status', ensureAuthenticated, ensureCanManageOrder, async (req, res) => {
+    const orderId = req.params.id;
+    const { newStatus } = req.body;
+    const loggedInUser = res.locals.loggedInUser;
+    console.log(`--- User ${loggedInUser._id} attempting status update for order ${orderId} to '${newStatus}' ---`);
+
+    if (!Order.schema.path('orderStatus').enumValues.includes(newStatus)) {
+        return res.redirect(`/orders/${orderId}?error=Invalid+status+value`);
+    }
+
+    // --- Mongoose Transaction (Recommended) ---
+    // const session = await mongoose.startSession();
+    // session.startTransaction();
+
+    try {
+        // Fetch the full order document, populating items AND warehouse location/ID
+        const order = await Order.findById(orderId)
+            // Populate item details needed for stock adjustment (we need quantity and maybe name for errors)
+            .populate({ path: 'orderItems.itemId', model: 'Item', select: 'name sku quantity' })
+            .populate('warehouseId', '_id name'); // Need warehouse ID for stock check
+
+        if (!order) throw new Error("Order not found.");
+        if (!order.warehouseId?._id) throw new Error("Order is missing warehouse information."); // Essential for stock
+
+        // Re-verify management permission
+        const hasAccess = await canAccessStoreData(loggedInUser, order.storeId);
+        if (!['admin', 'warehouse_owner', 'store_owner'].includes(loggedInUser.role) || !hasAccess) {
+            throw new Error("Permission denied to update this order's status.");
+        }
+
+        const currentStatus = order.orderStatus;
+        const warehouseId = order.warehouseId._id; // Warehouse fulfilling the order
+        console.log(`Current status: ${currentStatus}, Warehouse: ${warehouseId}, Attempting update to: ${newStatus}`);
+
+        // --- State Machine Logic ---
+        const validTransitions = {
+            pending: ['confirmed', 'cancelled'],
+            confirmed: ['shipped', 'cancelled'],
+            shipped: ['delivered', 'cancelled'], // Allow cancelling shipped? Maybe adds complexity.
+        };
+        if (!validTransitions[currentStatus] || !validTransitions[currentStatus].includes(newStatus)) {
+            throw new Error(`Invalid status transition from '${currentStatus}' to '${newStatus}'.`);
+        }
+
+        // --- Stock Adjustments ---
+        let stockUpdates = []; // Array of update promises
+
+        // --> DEDUCTING STOCK when moving to 'shipped'
+        if (newStatus === 'shipped' && currentStatus === 'confirmed') {
+            console.log("Preparing stock deduction for order:", orderId);
+            for (const orderItem of order.orderItems) {
+                const itemDoc = orderItem.itemId; // The populated Item document
+                const requestedQty = orderItem.quantity;
+
+                if (!itemDoc) throw new Error(`Item data missing for an item in the order.`);
+
+                // ** CRITICAL STOCK CHECK **
+                // Find the specific item in the specific warehouse
+                const stockItem = await Item.findOne({ _id: itemDoc._id, warehouseId: warehouseId });
+                if (!stockItem) throw new Error(`Item ${itemDoc.name} (SKU: ${itemDoc.sku}) not found in warehouse ${order.warehouseId.name}.`);
+                if (stockItem.quantity < requestedQty) {
+                    throw new Error(`Insufficient stock for item ${itemDoc.name} (SKU: ${itemDoc.sku}). Available: ${stockItem.quantity}, Needed: ${requestedQty}`);
+                }
+                console.log(`Stock OK for ${itemDoc.name}. Deducting ${requestedQty}.`);
+                // Add update operation to array
+                stockUpdates.push(
+                    Item.findByIdAndUpdate(itemDoc._id, { $inc: { quantity: -requestedQty } } /*, { session }*/ )
+                );
+            }
+        }
+        // --> RESTORING STOCK when moving to 'cancelled' from 'confirmed' or 'shipped'
+        else if (newStatus === 'cancelled' && ['confirmed', 'shipped'].includes(currentStatus)) {
+             console.log("Preparing stock restoration for cancelled order:", orderId);
+             for (const orderItem of order.orderItems) {
+                 const itemDoc = orderItem.itemId;
+                 const requestedQty = orderItem.quantity;
+                 if (!itemDoc) { console.warn(`Item data missing for cancellation restoration on order ${orderId}`); continue; } // Log warning but continue if item missing?
+
+                 console.log(`Stock for ${itemDoc.name} to be restored by ${requestedQty}.`);
+                  // Add update operation to array
+                 stockUpdates.push(
+                     Item.findByIdAndUpdate(itemDoc._id, { $inc: { quantity: +requestedQty } } /*, { session }*/ )
+                 );
+             }
+        }
+
+        // --- Execute Stock Updates (if any) ---
+        if (stockUpdates.length > 0) {
+             console.log(`Executing ${stockUpdates.length} stock adjustments...`);
+             await Promise.all(stockUpdates); // Run updates concurrently
+             console.log("Stock adjustments successful.");
+        }
+
+        // --- Update Order Status ---
+        order.orderStatus = newStatus;
+        order.updatedDate = new Date();
+        order.lastUpdatedBy = loggedInUser._id;
+
+        await order.save(/*{ session }*/); // Save order changes
+
+        // await session.commitTransaction(); // Commit transaction
+        console.log(`Order ${orderId} status updated to '${newStatus}' successfully.`);
+        res.redirect(`/orders/${orderId}?success=Order+status+updated+to+${newStatus}`);
+
+    } catch (err) {
+        // await session.abortTransaction(); // Abort on error
+        console.error(`Error updating order ${orderId} status:`, err);
+        res.redirect(`/orders/${orderId}?error=${encodeURIComponent(`Status update failed: ${err.message}`)}`);
+    } finally {
+        // session.endSession(); // Always end session
+    }
+});
+
 // --- TODO: Add route for updating status (PUT /orders/:id/status) ---
 
 module.exports = router;

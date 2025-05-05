@@ -11,20 +11,14 @@
 
 <section class="px-6 py-6 flex-1 overflow-y-auto">
     <div class="bg-white border rounded-lg shadow-sm">
-        <div class="px-4 py-3 border-b">
-            <h3 class="text-base font-semibold text-gray-700">All Items</h3>
-            <%# Add filters/search later %>
-        </div>
-
+        <div class="px-4 py-3 border-b"> <h3 class="text-base ...">All Items</h3> </div>
         <div class="overflow-x-auto">
             <table class="w-full text-left">
-                <thead class="bg-gray-50 border-b text-xs uppercase text-gray-500 tracking-wider">
+                <thead class="bg-gray-50 border-b text-xs uppercase ...">
                     <tr>
                         <th class="px-4 py-2 font-medium">SKU</th>
                         <th class="px-4 py-2 font-medium">Name</th>
-                        <th class="px-4 py-2 font-medium">Quantity</th>
-                        <th class="px-4 py-2 font-medium">Price</th>
-                        <th class="px-4 py-2 font-medium">Warehouse</th>
+                        <th class="px-4 py-2 font-medium text-right">Quantity</th> <th class="px-4 py-2 font-medium text-right">Unit Cost</th> <th class="px-4 py-2 font-medium text-right">Selling Price</th> <th class="px-4 py-2 font-medium">Warehouse</th>
                         <th class="px-4 py-2 font-medium">Expiry</th>
                         <th class="px-4 py-2 font-medium">Actions</th>
                     </tr>
@@ -35,28 +29,19 @@
                             <tr class="hover:bg-gray-50">
                                 <td class="px-4 py-3 font-mono text-xs"><%= item.sku %></td>
                                 <td class="px-4 py-3 font-medium text-gray-900"><%= item.name %></td>
-                                <td class="px-4 py-3"><%= item.quantity %></td>
-                                <td class="px-4 py-3"><%= item.price.toFixed(2) %></td> <%# Format price %>
-                                <td class="px-4 py-3"><%= item.warehouseId?.name || 'N/A' %></td> <%# Display populated name %>
-                                <td class="px-4 py-3">
-                                    <% if (item.perishable && item.expiryDate) { %>
-                                        <%= new Date(item.expiryDate).toLocaleDateString() %>
-                                    <% } else { %>
-                                        -
-                                    <% } %>
-                                </td>
+                                <td class="px-4 py-3 text-right"><%= item.quantity %></td>
+                                <td class="px-4 py-3 text-right">₹<%= item.unitPrice?.toFixed(2) || '0.00' %></td> <td class="px-4 py-3 text-right">₹<%= item.sellingPrice?.toFixed(2) || '0.00' %></td> <td class="px-4 py-3"><%= item.warehouseId?.name || 'N/A' %></td>
+                                <td class="px-4 py-3"><% /* Expiry date logic */ %></td>
                                 <td class="px-4 py-3 whitespace-nowrap">
-                                    <a href="/items/<%= item._id %>/edit" class="text-blue-600 hover:text-blue-800 hover:underline text-xs font-medium">Edit</a>
-                                    <%# Add Adjust Stock / Delete later %>
-                                </td>
+                                    <a href="/items/<%= item._id %>/edit" class="text-blue-600 ...">Edit</a>
+                                    </td>
                             </tr>
                         <% }) %>
                     <% } else { %>
-                        <tr><td colspan="7" class="text-center py-10 text-gray-500">No inventory items found.</td></tr>
+                        <tr><td colspan="8" class="text-center py-10 ...">No items found.</td></tr> <%# Adjusted colspan %>
                     <% } %>
                 </tbody>
             </table>
         </div>
-        <%# Add Pagination later if needed %>
     </div>
 </section>

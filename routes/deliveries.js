@@ -209,68 +209,99 @@ router.get('/map', async (req, res) => {
 
 // POST /deliveries/batch-pickup - Mark ALL confirmed orders for the warehouse as shipped
 router.post('/batch-pickup', async (req, res) => {
-    const loggedInUser = res.locals.loggedInUser;
-    // We need the warehouse ID from which the pickup is happening.
-    // Since we assume all active orders are from one warehouse, we can get it from any assigned order.
-    // Or potentially pass it in the form if needed later.
-    console.log(`--- Driver ${loggedInUser._id} attempting BATCH pickup ---`);
+  const loggedInUser = res.locals.loggedInUser;
+  console.log(`--- Driver ${loggedInUser._id} attempting BATCH pickup ---`);
+  let originWarehouseId = null;
+  // const session = await mongoose.startSession(); // For transaction
+  // session.startTransaction();
 
-    let originWarehouseId = null;
+  try {
+      // Find ALL 'confirmed' orders for this driver to get warehouse and aggregate items
+      const ordersToPick = await Order.find({
+          assignedDeliveryPartnerId: loggedInUser._id,
+          orderStatus: 'confirmed'
+      }).populate('orderItems.itemId', 'name sku quantity') // Populate items needed
+        .select('warehouseId orderItems') // Select only needed fields initially
+        .lean();
 
-    try {
-        // Find one 'confirmed' order to determine the warehouse ID
-        const oneOrder = await Order.findOne({
-             assignedDeliveryPartnerId: loggedInUser._id,
-             orderStatus: 'confirmed'
-        }).select('warehouseId').lean();
+      if (ordersToPick.length === 0) throw new Error("No confirmed orders found ready for pickup.");
 
-        if (!oneOrder) {
-             throw new Error("No confirmed orders found ready for pickup.");
-        }
-        originWarehouseId = oneOrder.warehouseId;
-        if (!originWarehouseId) {
-             throw new Error("Could not determine origin warehouse for pickup.");
-        }
+      // Determine and validate warehouse
+      originWarehouseId = ordersToPick[0].warehouseId;
+      if (!originWarehouseId) throw new Error("Could not determine origin warehouse from orders.");
+      const allFromSameWarehouse = ordersToPick.every(o => o.warehouseId?.toString() === originWarehouseId.toString());
+      if (!allFromSameWarehouse) throw new Error("Cannot batch pickup from multiple warehouses.");
+      console.log(`Attempting batch pickup from warehouse ${originWarehouseId}`);
 
-        console.log(`Attempting batch pickup from warehouse ${originWarehouseId} for driver ${loggedInUser._id}`);
+      // Aggregate ALL items needed for ALL these confirmed orders
+      const itemsToAggregate = ordersToPick.flatMap(o => o.orderItems); // Get flat list of all order items
+      const itemQuantitiesNeeded = itemsToAggregate.reduce((acc, current) => {
+          const itemIdStr = current.itemId?._id?.toString();
+          if (itemIdStr) {
+              acc[itemIdStr] = (acc[itemIdStr] || 0) + current.quantity;
+          }
+          return acc;
+      }, {}); // Result: { "itemId1": totalQty, "itemId2": totalQty, ... }
+      const neededItemIds = Object.keys(itemQuantitiesNeeded);
 
-        // TODO: Implement Robust Stock Deduction Here!
-        // 1. Aggregate needed items/quantities for *all confirmed orders* for this driver/warehouse.
-        // 2. Fetch current stock for those items.
-        // 3. Verify ALL items have sufficient stock. If not, throw error.
-        // 4. If stock is sufficient, perform the updateMany and THEN decrement stock using $inc. Use transactions if possible.
-        console.log("TODO: Implement stock check and deduction before updating status!");
+      console.log("Aggregated items for stock check:", itemQuantitiesNeeded);
 
-        // Update all 'confirmed' orders for this driver FROM THIS WAREHOUSE to 'shipped'
-        const updateResult = await Order.updateMany(
-            {
-                assignedDeliveryPartnerId: loggedInUser._id,
-                warehouseId: originWarehouseId, // Ensure we only update orders from this warehouse
-                orderStatus: 'confirmed'
-            },
-            {
-                $set: {
-                    orderStatus: 'shipped',
-                    updatedDate: new Date()
-                    // Optionally set pickupTimestamp: new Date()
-                }
-            }
-        );
+      // --- CRITICAL STOCK CHECK ---
+      if (neededItemIds.length > 0) {
+          console.log("Checking stock levels...");
+          const stockItems = await Item.find({
+              _id: { $in: neededItemIds },
+              warehouseId: originWarehouseId // Check stock in the correct warehouse
+          }).lean();
+          const stockMap = new Map(stockItems.map(i => [i._id.toString(), i.quantity]));
 
-        if (updateResult.matchedCount === 0) {
-             console.warn(`Batch pickup attempted, but no 'confirmed' orders found for driver ${loggedInUser._id} and warehouse ${originWarehouseId}.`);
-             // Maybe redirect with info message?
-        }
+          for (const itemId of neededItemIds) {
+               const needed = itemQuantitiesNeeded[itemId];
+               const available = stockMap.get(itemId) ?? -1; // Use ?? for safety if item missing
+               if (available < needed) {
+                   const failedItem = await Item.findById(itemId).select('name sku').lean(); // Get details for error msg
+                   throw new Error(`Insufficient stock for ${failedItem?.name || 'Unknown Item'} (SKU: ${failedItem?.sku || 'N/A'}). Available: ${available < 0 ? 0 : available}, Needed: ${needed}`);
+               }
+               console.log(`Stock OK for item ${itemId}. Available: ${available}, Needed: ${needed}`);
+          }
+          console.log("Stock check passed for all items.");
+      }
 
-        console.log(`Batch pickup complete: ${updateResult.modifiedCount} orders marked as 'shipped' from warehouse ${originWarehouseId}.`);
-        // req.flash('success_msg', `${updateResult.modifiedCount} orders marked as picked up.`);
-        res.redirect('/deliveries/map?success=Orders+picked+up.+Route+ready.'); // Redirect to map view
 
-    } catch (err) {
-        console.error(`Error during batch pickup from warehouse ${originWarehouseId}:`, err);
-        // req.flash('error_msg', `Pickup failed: ${err.message}`);
-        res.redirect(`/deliveries/my?error=${encodeURIComponent(`Pickup failed: ${err.message}`)}`);
-    }
+      // --- Perform Stock Deduction ---
+      let stockUpdates = [];
+      for (const itemId of neededItemIds) {
+           stockUpdates.push(
+               Item.findByIdAndUpdate(itemId, { $inc: { quantity: -itemQuantitiesNeeded[itemId] } } /*, { session }*/ )
+           );
+      }
+      if (stockUpdates.length > 0) {
+           console.log(`Executing ${stockUpdates.length} stock deductions...`);
+           await Promise.all(stockUpdates); // Run updates
+           console.log("Stock deductions successful.");
+      }
+
+
+      // --- Update Order Statuses ---
+      const orderIdsToUpdate = ordersToPick.map(o => o._id);
+      console.log(`Updating status to 'shipped' for ${orderIdsToUpdate.length} orders...`);
+      const updateResult = await Order.updateMany(
+          { _id: { $in: orderIdsToUpdate } },
+          { $set: { orderStatus: 'shipped', updatedDate: new Date() } }
+          // { session } // Add session if using transactions
+      );
+      console.log(`Batch pickup complete: ${updateResult.modifiedCount} orders marked as 'shipped'.`);
+
+      // await session.commitTransaction(); // Commit transaction
+      res.redirect('/deliveries/map?success=Orders+picked+up.+Route+ready.'); // Redirect to map
+
+  } catch (err) {
+      // await session.abortTransaction(); // Abort on error
+      console.error(`Error during batch pickup from warehouse ${originWarehouseId}:`, err);
+      res.redirect(`/deliveries/my?error=${encodeURIComponent(`Pickup failed: ${err.message}`)}`);
+  } finally {
+     // if (session) session.endSession(); // Always end session
+  }
 });
 
 // POST /deliveries/:orderId/delivered - Mark order as delivered
