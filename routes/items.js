@@ -169,29 +169,37 @@ router.post('/', async (req, res) => {
 });
 
 // GET /items/:id/edit - Show form to edit item
-router.get('/:id/edit', async (req, res) => {
+router.get('/:id/edit', ensureAdminOrOwner, async (req, res) => { // ensureAdminOrOwner restricts access
     const itemId = req.params.id;
     const loggedInUser = res.locals.loggedInUser;
     if (!mongoose.Types.ObjectId.isValid(itemId)) return res.status(400).send("Invalid Item ID");
 
     try {
-        const item = await Item.findById(itemId).lean();
-        if (!item) throw new Error("Item not found.");
+        const itemToEdit = await Item.findById(itemId).lean(); // Use itemToEdit consistently
+        if (!itemToEdit) throw new Error("Item not found.");
 
         // Authorization: Ensure item belongs to user's company (if not admin)
-        if (loggedInUser.role === 'warehouse_owner' && item.companyId?.toString() !== loggedInUser.companyId?._id?.toString()) {
-             throw new Error("You do not have permission to edit this item.");
+        if (loggedInUser.role === 'warehouse_owner') {
+            if (!itemToEdit.companyId) { throw new Error("Item is missing company information."); } // Safety check
+            if (itemToEdit.companyId.toString() !== loggedInUser.companyId?._id?.toString()) {
+                throw new Error("You do not have permission to edit this item.");
+            }
         }
 
-        // Fetch warehouses for context (usually cannot change warehouse)
-        const availableWarehouses = await Warehouse.find({ companyId: item.companyId }).select('id name').lean();
+        // Fetch warehouses for context (warehouse field is disabled, but good practice)
+        const companyIdForLookup = loggedInUser.role === 'admin' ? itemToEdit.companyId : loggedInUser.companyId?._id;
+        let availableWarehouses = [];
+        if (companyIdForLookup) {
+            availableWarehouses = await Warehouse.find({ companyId: companyIdForLookup }).select('id name').lean();
+        }
 
-         res.render('items/form', {
+         res.render('items/form', { // Render items/form.ejs
             title: 'Edit Item',
-            item: item, // Pass existing item data
-            userToEdit: item, // Use consistent variable name with user form? Let's use 'item'
-            isEditing: true, // Flag for the view
+            item: itemToEdit, // Pass existing item data as 'item'
+            isEditing: true, // Set flag for the view
             availableWarehouses: availableWarehouses,
+            formData: itemToEdit, // Pre-fill formData too for consistency if desired
+            // No need to pass allCompanies unless admin can change company here
             layout: './layouts/dashboard_layout'
          });
 
@@ -231,6 +239,83 @@ router.delete('/:id', ensureAdminOrOwner, async (req, res) => {
          res.redirect(`/items?error=${encodeURIComponent(err.message)}`);
     }
 });
+
+// PUT /items/:id - Update an item (requires method-override)
+router.put('/:id', ensureAdminOrOwner, async (req, res) => { // ensureAdminOrOwner restricts access
+    const itemId = req.params.id;
+    const loggedInUser = res.locals.loggedInUser;
+    // Get editable fields from body. Exclude quantity, sku, warehouseId, companyId.
+    const { name, unitPrice, sellingPrice, description, perishable, expiryDate } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(itemId)) return res.status(400).send("Invalid Item ID");
+
+    let availableWarehouses = []; // For re-rendering form on error
+
+    try {
+        // Fetch full Mongoose document to use validation and save()
+        const itemToUpdate = await Item.findById(itemId);
+        if (!itemToUpdate) throw new Error("Item not found.");
+
+        // Authorization: Check again if user owns this item's company (if not admin)
+        if (loggedInUser.role === 'warehouse_owner') {
+            if (!itemToUpdate.companyId) { throw new Error("Item is missing company information."); }
+            if (itemToUpdate.companyId.toString() !== loggedInUser.companyId?._id?.toString()) {
+               throw new Error("You do not have permission to edit this item.");
+           }
+        }
+
+        // Validation for submitted fields
+        if (!name || unitPrice === undefined || sellingPrice === undefined) {
+            throw new Error("Name, Unit Price, and Selling Price are required.");
+        }
+        const parsedUnitPrice = parseFloat(unitPrice);
+        const parsedSellingPrice = parseFloat(sellingPrice);
+        if (isNaN(parsedUnitPrice) || parsedUnitPrice < 0) { throw new Error("Invalid Unit Price."); }
+        if (isNaN(parsedSellingPrice) || parsedSellingPrice < 0) { throw new Error("Invalid Selling Price."); }
+
+
+        // Update fields (DO NOT update quantity here)
+        itemToUpdate.name = name.trim();
+        itemToUpdate.unitPrice = parsedUnitPrice;
+        itemToUpdate.sellingPrice = parsedSellingPrice;
+        itemToUpdate.description = description?.trim() || '';
+        itemToUpdate.perishable = perishable === 'on' || perishable === true; // Handle checkbox
+        // Only update expiryDate if perishable is checked AND a valid date was provided
+        itemToUpdate.expiryDate = (itemToUpdate.perishable && expiryDate) ? new Date(expiryDate) : null;
+        itemToUpdate.lastUpdated = new Date();
+
+        // Pre-save hook will run again, but won't change SKU as item is not new
+
+        await itemToUpdate.save(); // Validate and save changes
+        console.log(`Item ${itemId} updated successfully.`);
+        // TODO: Add flash message for success
+        res.redirect('/items');
+
+    } catch (err) {
+         console.error(`Error updating item ${itemId}:`, err);
+         // Fetch data needed to re-render edit form
+         try {
+            // Re-fetch potentially needed data if re-rendering
+            const item = await Item.findById(itemId).lean(); // Get potentially updated data
+            const companyIdForLookup = loggedInUser.role === 'admin' ? item?.companyId : loggedInUser.companyId?._id;
+            if (companyIdForLookup) {
+                 availableWarehouses = await Warehouse.find({ companyId: companyIdForLookup }).select('id name').lean();
+            }
+            res.status(400).render('items/form', {
+                title: 'Edit Item',
+                item: req.body, // Pass attempted data back via 'item' (or use formData)
+                isEditing: true,
+                availableWarehouses: availableWarehouses,
+                error: `Failed to update item: ${err.message}`, // Show specific error
+                layout: './layouts/dashboard_layout'
+            });
+         } catch (renderErr) {
+            console.error("Error re-rendering item edit form:", renderErr);
+            res.status(500).render('error_page', { title: "Error", message: "Failed to update item and could not reload form.", layout: false });
+         }
+    }
+});
+
 
 // --- Add routes for viewing details, editing, updating stock, deleting later ---
 // GET /items/:id

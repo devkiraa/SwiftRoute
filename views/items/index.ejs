@@ -3,6 +3,8 @@
 <header class="py-3 px-6 border-b border-gray-200 bg-white shadow-sm flex-shrink-0">
     <div class="flex items-center justify-between">
         <h2 class="text-lg font-semibold text-gray-800"><%= locals.pageTitle %></h2>
+         <% if (typeof error === 'string' && error) { %> <span class="text-sm text-red-600 ml-4"><%= error %></span> <% } %>
+         <% if (typeof success_msg === 'string' && success_msg) { %> <span class="text-sm text-green-600 ml-4"><%= success_msg %></span> <% } %>
         <a href="/items/new" class="inline-block px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700">
             Add New Item
         </a>
@@ -11,37 +13,60 @@
 
 <section class="px-6 py-6 flex-1 overflow-y-auto">
     <div class="bg-white border rounded-lg shadow-sm">
-        <div class="px-4 py-3 border-b"> <h3 class="text-base ...">All Items</h3> </div>
+        <div class="px-4 py-3 border-b">
+            <h3 class="text-base font-semibold text-gray-700">All Items</h3>
+             </div>
+
         <div class="overflow-x-auto">
             <table class="w-full text-left">
-                <thead class="bg-gray-50 border-b text-xs uppercase ...">
+                <thead class="bg-gray-50 border-b text-xs uppercase text-gray-500 tracking-wider">
                     <tr>
                         <th class="px-4 py-2 font-medium">SKU</th>
                         <th class="px-4 py-2 font-medium">Name</th>
-                        <th class="px-4 py-2 font-medium text-right">Quantity</th> <th class="px-4 py-2 font-medium text-right">Unit Cost</th> <th class="px-4 py-2 font-medium text-right">Selling Price</th> <th class="px-4 py-2 font-medium">Warehouse</th>
+                        <th class="px-4 py-2 font-medium text-right">Quantity</th>
+                        <th class="px-4 py-2 font-medium text-right">Unit Cost</th>
+                        <th class="px-4 py-2 font-medium text-right">Selling Price</th>
+                        <th class="px-4 py-2 font-medium">Warehouse</th>
                         <th class="px-4 py-2 font-medium">Expiry</th>
                         <th class="px-4 py-2 font-medium">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y text-sm text-gray-700">
-                    <% if (items && items.length > 0) { %>
+                    <% if (typeof items !== 'undefined' && items && items.length > 0) { %>
                         <% items.forEach(item => { %>
                             <tr class="hover:bg-gray-50">
-                                <td class="px-4 py-3 font-mono text-xs"><%= item.sku %></td>
+                                <td class="px-4 py-3 font-mono text-xs"><%= item.sku || 'N/A' %></td>
                                 <td class="px-4 py-3 font-medium text-gray-900"><%= item.name %></td>
                                 <td class="px-4 py-3 text-right"><%= item.quantity %></td>
-                                <td class="px-4 py-3 text-right">₹<%= item.unitPrice?.toFixed(2) || '0.00' %></td> <td class="px-4 py-3 text-right">₹<%= item.sellingPrice?.toFixed(2) || '0.00' %></td> <td class="px-4 py-3"><%= item.warehouseId?.name || 'N/A' %></td>
-                                <td class="px-4 py-3"><% /* Expiry date logic */ %></td>
+                                <td class="px-4 py-3 text-right">$<%= item.unitPrice?.toFixed(2) || '0.00' %></td>
+                                <td class="px-4 py-3 text-right">$<%= item.sellingPrice?.toFixed(2) || '0.00' %></td>
+                                <td class="px-4 py-3"><%= item.warehouseId?.name || 'N/A' %></td>
                                 <td class="px-4 py-3 whitespace-nowrap">
-                                    <a href="/items/<%= item._id %>/edit" class="text-blue-600 ...">Edit</a>
+                                    <% if (item.perishable && item.expiryDate) { %>
+                                        <%= new Date(item.expiryDate).toLocaleDateString() %>
+                                    <% } else { %>
+                                        -
+                                    <% } %>
+                                </td>
+                                <td class="px-4 py-3 whitespace-nowrap">
+                                    <a href="/items/<%= item._id %>/edit" class="text-blue-600 hover:text-blue-800 hover:underline text-xs font-medium">Edit</a>
+                                    <% if (locals.loggedInUser && (locals.loggedInUser.role === 'admin' || locals.loggedInUser.role === 'warehouse_owner')) { %>
+                                    <form action="/items/<%= item._id %>?_method=DELETE" method="POST" class="inline ml-2" onsubmit="return confirm('Are you sure you want to delete item: <%= item.name %> (SKU: <%= item.sku %>)? Stock will NOT be adjusted. This cannot be undone.');">
+                                        <button type="submit" class="text-red-600 hover:text-red-800 hover:underline text-xs font-medium p-0 border-none bg-transparent cursor-pointer">Delete</button>
+                                    </form>
+                                    <% } %>
                                     </td>
                             </tr>
                         <% }) %>
                     <% } else { %>
-                        <tr><td colspan="8" class="text-center py-10 ...">No items found.</td></tr> <%# Adjusted colspan %>
+                        <tr><td colspan="8" class="text-center py-10 text-gray-500">No inventory items found.</td></tr> <%# Ensure colspan matches number of <th> elements %>
                     <% } %>
                 </tbody>
             </table>
         </div>
+
+        <%# Add Pagination later if needed %>
+        <%# if (pagination && pagination.totalPages > 1) { %>
+        <%# } %>
     </div>
 </section>
