@@ -87,8 +87,8 @@
                                         <td class="px-4 py-2 whitespace-nowrap"><%= item.itemId?.name || '(Item Deleted)' %></td>
                                         <td class="px-4 py-2 whitespace-nowrap font-mono text-xs"><%= item.itemId?.sku || 'N/A' %></td>
                                         <td class="px-4 py-2 text-right"><%= item.quantity %></td>
-                                        <td class="px-4 py-2 text-right">$<%= item.priceAtOrder.toFixed(2) %></td> <%# Added currency symbol %>
-                                        <td class="px-4 py-2 text-right font-medium">$<%= (item.quantity * item.priceAtOrder).toFixed(2) %></td> <%# Added currency symbol %>
+                                        <td class="px-4 py-2 text-right">₹<%= item.priceAtOrder.toFixed(2) %></td> <%# Added currency symbol %>
+                                        <td class="px-4 py-2 text-right font-medium">₹<%= (item.quantity * item.priceAtOrder).toFixed(2) %></td> <%# Added currency symbol %>
                                     </tr>
                                  <% }) %>
                              <% } else { %>
@@ -99,7 +99,7 @@
                          <tfoot class="bg-gray-50">
                              <tr>
                                  <td colspan="4" class="px-4 py-2 text-right text-sm font-medium text-gray-700">Total Amount:</td>
-                                 <td class="px-4 py-2 text-right text-sm font-bold text-gray-900">$<%= order.totalAmount.toFixed(2) %></td> <%# Added currency symbol %>
+                                 <td class="px-4 py-2 text-right text-sm font-bold text-gray-900">₹<%= order.totalAmount.toFixed(2) %></td> <%# Added currency symbol %>
                              </tr>
                          </tfoot>
                          <% } %>
