@@ -1,5 +1,6 @@
-<% locals.pageTitle = typeof title !== 'undefined' ? title : 'Item Form' %>
+<% locals.pageTitle = typeof title !== 'undefined' ? title : 'Item Form'; %>
 <% const isEditing = typeof item !== 'undefined' && item && item._id; %>
+<% const uomOptions = ['pcs', 'kg', 'g', 'ltr', 'ml', 'box', 'pack', 'set', 'mtr', 'other']; %>
 
 <header class="py-3 px-6 border-b border-gray-200 bg-white shadow-sm flex-shrink-0">
     <div class="flex items-center justify-between">
@@ -11,84 +12,102 @@
 </header>
 
 <section class="p-6 flex-1 overflow-y-auto">
-    <div class="max-w-2xl mx-auto"> <%# Single column form %>
+    <div class="max-w-2xl mx-auto">
 
-        <% if (typeof error === 'string' && error) { %> <div class="mb-4 bg-red-100 ..."><%= error %></div> <% } %>
+        <% if (typeof error === 'string' && error) { %>
+            <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                <strong class="font-bold">Error!</strong> <span class="block sm:inline"><%= error %></span>
+            </div>
+        <% } %>
 
-        <form action="<%= isEditing ? '/items/' + item._id + '?_method=PUT' : '/items' %>" method="POST" id="item-form" class="bg-white p-6 border rounded-lg shadow-sm space-y-4">
+        <form action="<%= isEditing ? '/items/' + item._id + '?_method=PUT' : '/items' %>" method="POST" id="item-form" class="bg-white p-6 border rounded-lg shadow-sm space-y-5">
 
             <div>
                 <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Item Name <span class="text-red-500">*</span></label>
                 <input type="text" id="name" name="name" value="<%= isEditing ? item.name : (formData?.name || '') %>" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
             </div>
 
-             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                 <div>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                    <label for="hsnCode" class="block text-sm font-medium text-gray-700 mb-1">HSN Code</label>
+                    <input type="text" id="hsnCode" name="hsnCode" value="<%= isEditing ? item.hsnCode : (formData?.hsnCode || '') %>" placeholder="e.g., 482010" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                </div>
+                <div>
+                    <label for="uom" class="block text-sm font-medium text-gray-700 mb-1">Unit of Measure (UOM) <span class="text-red-500">*</span></label>
+                    <select id="uom" name="uom" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white">
+                        <% uomOptions.forEach(opt => { %>
+                            <% const currentUom = isEditing && item.uom ? item.uom : (formData?.uom || 'pcs'); %>
+                            <option value="<%= opt %>" <%= currentUom === opt ? 'selected' : '' %>><%= opt.toUpperCase() %></option>
+                        <% }); %>
+                    </select>
+                </div>
+                <div>
+                    <label for="quantity" class="block text-sm font-medium text-gray-700 mb-1">
+                        <%= isEditing ? 'Current Quantity' : 'Initial Quantity' %> <span class="text-red-500">*</span>
+                    </label>
+                    <input type="number" id="quantity" name="quantity" value="<%= isEditing ? item.quantity : (formData?.quantity || '0') %>" required min="0" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm <%= isEditing ? 'bg-gray-100 cursor-not-allowed' : '' %>" <%= isEditing ? 'readonly' : '' %> >
+                </div>
+            </div>
+            <% if (isEditing) { %>
+                <p class="mt-1 text-xs text-gray-500 text-right -mt-4">Use Stock Adjustments to change quantity.</p>
+            <% } %>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
                     <label for="unitPrice" class="block text-sm font-medium text-gray-700 mb-1">Unit Cost Price <span class="text-red-500">*</span></label>
                     <input type="number" id="unitPrice" name="unitPrice" value="<%= isEditing ? item.unitPrice : (formData?.unitPrice || '0.00') %>" required min="0" step="0.01" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                    <p class="mt-1 text-xs text-gray-500">Your cost per single unit.</p>
-                 </div>
-                 <div>
+                </div>
+                <div>
                     <label for="sellingPrice" class="block text-sm font-medium text-gray-700 mb-1">Unit Selling Price <span class="text-red-500">*</span></label>
                     <input type="number" id="sellingPrice" name="sellingPrice" value="<%= isEditing ? item.sellingPrice : (formData?.sellingPrice || '0.00') %>" required min="0" step="0.01" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                     <p class="mt-1 text-xs text-gray-500">Price you sell at per unit.</p>
                 </div>
-             </div>
-            <div>
-                <label for="quantity" class="block text-sm font-medium text-gray-700 mb-1">
-                    <%= isEditing ? 'Current Quantity' : 'Initial Quantity' %> <span class="text-red-500">*</span>
-                </label>
-                <input type="number" id="quantity" name="quantity" value="<%= isEditing ? item.quantity : (formData?.quantity || '0') %>" required min="0" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm <%= isEditing ? 'bg-gray-100 cursor-not-allowed' : '' %>" <%= isEditing ? 'readonly' : '' %> >
-                 <% if (isEditing) { %>
-                     <p class="mt-1 text-xs text-gray-500">Use specific Stock Adjustment actions to change quantity.</p>
-                 <% } else { %>
-                     <p class="mt-1 text-xs text-gray-500">Initial stock level for this item in the selected warehouse.</p>
-                 <% } %>
+                <div>
+                    <label for="mrp" class="block text-sm font-medium text-gray-700 mb-1">MRP (Max Retail Price)</label>
+                    <input type="number" id="mrp" name="mrp" value="<%= isEditing && typeof item.mrp !== 'undefined' ? item.mrp : (formData?.mrp || '') %>" min="0" step="0.01" placeholder="Optional" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                </div>
             </div>
 
-
-             <div>
+            <div>
                 <label for="warehouseId" class="block text-sm font-medium text-gray-700 mb-1">Warehouse <span class="text-red-500">*</span></label>
                 <select id="warehouseId" name="warehouseId" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm <%= isEditing ? 'bg-gray-100 cursor-not-allowed' : '' %>" <%= isEditing ? 'disabled' : '' %>>
                     <option value="">-- Select Warehouse --</option>
                     <% if (typeof availableWarehouses !== 'undefined' && availableWarehouses && availableWarehouses.length > 0) { %>
                         <% availableWarehouses.forEach(wh => { %>
-                             <option value="<%= wh._id %>" <%# Check item exists and ID matches for selection %> <%= (isEditing && item && item.warehouseId?.toString() === wh._id.toString()) ? 'selected' : '' %>>
+                            <option value="<%= wh._id %>" <%= (isEditing && item && item.warehouseId?.toString() === wh._id.toString()) ? 'selected' : '' %>>
                                 <%= wh.name %>
                             </option>
-                        <% }) %>
+                        <% }); %>
                     <% } %>
                 </select>
-                <%# Corrected Helper Text Logic Below %>
                 <% if (isEditing) { %>
                     <p class="mt-1 text-xs text-gray-500">Cannot change warehouse after creation.</p>
-                <% } %>
-                <% if (!isEditing && (typeof availableWarehouses === 'undefined' || !availableWarehouses || availableWarehouses.length === 0)) { %>
+                <% } else if (typeof availableWarehouses === 'undefined' || !availableWarehouses || availableWarehouses.length === 0) { %>
                     <p class="mt-1 text-xs text-red-600">No warehouses available for your company. <a href="/warehouses/new" class="underline font-medium">Add one first</a>.</p>
                 <% } %>
             </div>
 
-             <div>
+            <div>
                 <label for="description" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
                 <textarea id="description" name="description" rows="3" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"><%= isEditing ? item.description : (formData?.description || '') %></textarea>
-             </div>
+            </div>
 
-             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
-                 <div class="relative flex items-start">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+                <div class="relative flex items-start">
                     <div class="flex items-center h-5">
-                      <input id="perishable" name="perishable" type="checkbox" <%= (isEditing && item.perishable) ? 'checked' : (formData?.perishable ? 'checked' : '') %> class="focus:ring-blue-500 h-4 w-4 text-blue-600 border-gray-300 rounded">
+                        <input id="perishable" name="perishable" type="checkbox" <%= (isEditing && item.perishable) ? 'checked' : (formData?.perishable ? 'checked' : '') %> class="focus:ring-blue-500 h-4 w-4 text-blue-600 border-gray-300 rounded">
                     </div>
-                    <div class="ml-3 text-sm"> <label for="perishable" class="font-medium text-gray-700">Perishable Item?</label> </div>
-                  </div>
+                    <div class="ml-3 text-sm">
+                        <label for="perishable" class="font-medium text-gray-700">Perishable Item?</label>
+                    </div>
+                </div>
                 <div id="expiryDateGroup" class="<%= (isEditing && item.perishable) || formData?.perishable ? '' : 'hidden' %>">
                     <label for="expiryDate" class="block text-sm font-medium text-gray-700 mb-1">Expiry Date</label>
                     <input type="date" id="expiryDate" name="expiryDate" value="<%= isEditing && item.expiryDate ? new Date(item.expiryDate).toISOString().split('T')[0] : (formData?.expiryDate || '') %>" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                 </div>
             </div>
 
-
             <div class="mt-6 pt-4 border-t border-gray-200 flex justify-end">
-                 <a href="/items" class="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 mr-3">Cancel</a>
+                <a href="/items" class="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 mr-3">Cancel</a>
                 <button type="submit" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
                     <%= isEditing ? 'Update Item' : 'Add Item' %>
                 </button>
@@ -99,9 +118,16 @@
 
 <script>
     // Keep the toggleExpiry() script as before
-     const perishableCheckbox = document.getElementById('perishable');
-     const expiryDateGroup = document.getElementById('expiryDateGroup');
-     function toggleExpiry() { /* ... */ }
-     perishableCheckbox.addEventListener('change', toggleExpiry);
-     document.addEventListener('DOMContentLoaded', toggleExpiry);
+    const perishableCheckbox = document.getElementById('perishable');
+    const expiryDateGroup = document.getElementById('expiryDateGroup');
+    function toggleExpiry() {
+        if (perishableCheckbox.checked) {
+            expiryDateGroup.classList.remove('hidden');
+        } else {
+            expiryDateGroup.classList.add('hidden');
+            // document.getElementById('expiryDate').value = ''; // Optional: Clear value
+        }
+    }
+    perishableCheckbox.addEventListener('change', toggleExpiry);
+    document.addEventListener('DOMContentLoaded', toggleExpiry);
 </script>
