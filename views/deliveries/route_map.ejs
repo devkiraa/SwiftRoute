@@ -56,7 +56,7 @@
 <script src="https://maps.googleapis.com/maps/api/js?key=<%= googleMapsApiKey %>&libraries=geometry,marker&callback=initRouteMap" async defer></script>
 
 <script>
-  let map, legPolyline;
+  let map, legPolyline, vehicleMarker;
   const loader = document.getElementById('map-loader');
 
   function initRouteMap() {
@@ -66,8 +66,32 @@
       mapId: 'SWIFTROUTE_DELIVERY_MAP'
     });
 
+    // Hide loader once map initialized
     loader.style.display = 'none';
 
+    // Add vehicle marker placeholder
+    vehicleMarker = new google.maps.Marker({
+      map,
+      icon: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#FF0000', fillOpacity: 1, strokeWeight: 2, strokeColor: '#FFFFFF' },
+      title: 'Your Location'
+    });
+
+    // Watch user position
+    if (navigator.geolocation) {
+      navigator.geolocation.watchPosition(pos => {
+        const { latitude, longitude } = pos.coords;
+        const latLng = { lat: latitude, lng: longitude };
+        vehicleMarker.setPosition(latLng);
+        // Optionally pan map
+        map.panTo(latLng);
+      }, err => {
+        console.error('Geolocation error:', err);
+      }, { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 });
+    } else {
+      alert('Geolocation is not supported by your browser.');
+    }
+
+    // Attach leg button handlers
     document.querySelectorAll('.start-route-btn').forEach(btn => {
       btn.addEventListener('click', () => loadLeg(btn));
     });
