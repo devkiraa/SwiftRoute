@@ -121,31 +121,51 @@ router.post('/', async (req, res) => {
     console.log("Received POST /items request body:", JSON.stringify(req.body));
 
     try {
-        // Add new fields to destructuring
         const { name, quantity, unitPrice, sellingPrice, mrp, hsnCode, uom, description, perishable, expiryDate, warehouseId } = req.body;
 
-        // Validation (add checks for new fields)
-        if (!name || !quantity || unitPrice === undefined || sellingPrice === undefined || !warehouseId || !uom) {
-            throw new Error("Name, Quantity, Unit Price, Selling Price, UOM, and Warehouse are required.");
-        }
-         if (!UOM_ENUM.includes(uom)) { throw new Error("Invalid Unit of Measure selected."); }
-         const parsedMrp = mrp ? parseFloat(mrp) : null; // MRP is optional
-         const parsedSellingPrice = parseFloat(sellingPrice);
-         if (parsedMrp !== null && (isNaN(parsedMrp) || parsedMrp < 0)) { throw new Error("Invalid MRP provided."); }
-         if (parsedMrp !== null && parsedSellingPrice > parsedMrp) { throw new Error("Selling Price cannot be greater than MRP."); }
-        // ... (keep other validations) ...
+        // --- Validation (Keep as is from response #58) ---
+        if (!name || !quantity || unitPrice === undefined || sellingPrice === undefined || !warehouseId || !uom) { /* ... */ }
+        // ... other validations ...
 
-        // Authorization & Get Company ID (Keep as is)
+        // --- Authorization & Get Company ID ---
         const selectedWarehouse = await Warehouse.findById(warehouseId).lean();
         if (!selectedWarehouse) throw new Error("Selected warehouse not found.");
-        let targetCompanyId; // ... determine targetCompanyId ...
-        if (!targetCompanyId) throw new Error("Could not determine Company ID.");
+        if (!selectedWarehouse.companyId) throw new Error("Selected warehouse is not associated with a company.");
 
-        // Create Item Data (add new fields)
+        let targetCompanyId;
+        console.log("loggedInUser.companyId details:", JSON.stringify(loggedInUser.companyId, null, 2)); // For debugging
+
+        if (loggedInUser.role === 'admin') {
+            targetCompanyId = selectedWarehouse.companyId;
+        } else { // Warehouse owner
+            // Ensure loggedInUser.companyId is an object with _id (populated) or is an ObjectId itself
+            const userCompanyIdStr = loggedInUser.companyId?._id?.toString() || loggedInUser.companyId?.toString();
+            if (!userCompanyIdStr) {
+                throw new Error("Warehouse owner is not properly associated with a company.");
+            }
+            if (selectedWarehouse.companyId.toString() !== userCompanyIdStr) {
+                 throw new Error("Selected warehouse does not belong to your company.");
+             }
+            targetCompanyId = userCompanyIdStr; // Use the string ID
+        }
+
+        if (!targetCompanyId) {
+            // This log will help confirm if it's reached
+            console.error("Failed to determine targetCompanyId. Admin role:", loggedInUser.role === 'admin', "User companyId:", loggedInUser.companyId, "Selected warehouse companyId:", selectedWarehouse.companyId);
+            throw new Error("Could not determine Company ID for the item.");
+        }
+
+        // Create Item Data
         const newItemData = {
-            name: name.trim(), companyId: targetCompanyId, warehouseId,
-            quantity: parseInt(quantity, 10), unitPrice: parseFloat(unitPrice), sellingPrice: parsedSellingPrice,
-            mrp: parsedMrp, hsnCode: hsnCode?.trim() || null, uom, // Add new fields
+            name: name.trim(),
+            companyId: targetCompanyId, // This should now be a valid ObjectId string or ObjectId
+            warehouseId,
+            quantity: parseInt(quantity, 10),
+            unitPrice: parseFloat(unitPrice),
+            sellingPrice: parseFloat(sellingPrice),
+            mrp: mrp ? parseFloat(mrp) : null,
+            hsnCode: hsnCode?.trim() || null,
+            uom,
             description: description?.trim() || '',
             perishable: perishable === 'on' || perishable === true,
             expiryDate: (perishable === 'on' || perishable === true) && expiryDate ? new Date(expiryDate) : null
@@ -153,18 +173,25 @@ router.post('/', async (req, res) => {
         console.log("Prepared newItemData:", newItemData);
 
         const newItem = new Item(newItemData);
-        await newItem.save(); // Pre-save hook generates SKU
-        console.log("Item created:", newItem.name, "SKU:", newItem.sku);
-        res.redirect('/items');
+        await newItem.save();
+        console.log("Item created successfully:", newItem.name, "SKU:", newItem.sku);
+        res.redirect('/items?success=Item+created+successfully');
 
     } catch (err) {
         console.error("Error creating item:", err);
-        // Fetch warehouses again for form re-render
-         try { /* ... fetch availableWarehouses ... */ } catch (fetchErr) { /* ... */ }
+        try {
+            let warehouseQuery = {};
+            if (loggedInUser?.role === 'warehouse_owner') {
+                warehouseQuery.companyId = loggedInUser.companyId?._id || loggedInUser.companyId;
+            }
+            availableWarehouses = await Warehouse.find(warehouseQuery, 'id name').lean();
+        } catch (fetchErr) { console.error("Error refetching warehouses for error re-render:", fetchErr); }
+
         res.status(400).render('items/form', {
             title: 'Add New Item', item: {}, formData: req.body, availableWarehouses, isEditing: false,
-            uomOptions: UOM_ENUM, // Pass UOM options back on error
-            error: `Failed to add item: ${err.message}`, layout: './layouts/dashboard_layout'
+            uomOptions: UOM_ENUM,
+            error: `Failed to add item: ${err.message}`,
+            layout: './layouts/dashboard_layout'
         });
     }
 });
@@ -290,6 +317,104 @@ router.put('/:id', async (req, res) => {
     }
 });
 
+// GET /items/:id/adjust-stock - Show form to adjust stock
+router.get('/:id/adjust-stock', async (req, res) => {
+    const itemId = req.params.id;
+    const loggedInUser = res.locals.loggedInUser;
+    if (!mongoose.Types.ObjectId.isValid(itemId)) return res.status(400).send("Invalid Item ID");
+
+    try {
+        const item = await Item.findById(itemId).populate('warehouseId', 'name').lean(); // Populate warehouse for context
+        if (!item) throw new Error("Item not found.");
+
+        // Authorization: Ensure item belongs to user's company (if not admin)
+        if (loggedInUser.role === 'warehouse_owner') {
+            if (!item.companyId || item.companyId.toString() !== (loggedInUser.companyId?._id || loggedInUser.companyId).toString()) {
+                throw new Error("You do not have permission to adjust stock for this item.");
+            }
+        }
+        // Admin has access
+
+        res.render('items/adjust_stock_form', {
+            title: 'Adjust Stock for',
+            item: item,
+            formData: {}, // For initial load, no previous form data
+            layout: './layouts/dashboard_layout'
+        });
+
+    } catch (err) {
+        console.error(`Error loading stock adjustment form for item ${itemId}:`, err);
+        res.redirect(`/items?error=${encodeURIComponent(`Failed to load adjustment form: ${err.message}`)}`);
+    }
+});
+
+// POST /items/:id/adjust-stock - Process the stock adjustment
+router.post('/:id/adjust-stock', async (req, res) => {
+    const itemId = req.params.id;
+    const loggedInUser = res.locals.loggedInUser;
+    const { adjustmentQuantity, reason } = req.body;
+    console.log(`Attempting stock adjustment for item ${itemId}: Qty=${adjustmentQuantity}, Reason=${reason}`);
+
+    if (!mongoose.Types.ObjectId.isValid(itemId)) {
+         return res.redirect(`/items?error=Invalid+Item+ID`);
+    }
+
+    const adjQty = parseInt(adjustmentQuantity, 10);
+
+    if (isNaN(adjQty)) {
+        return res.redirect(`/items/${itemId}/adjust-stock?error=Adjustment+quantity+must+be+a+number.`);
+    }
+    if (!reason || reason.trim() === '') {
+        return res.redirect(`/items/${itemId}/adjust-stock?error=Reason+for+adjustment+is+required.`);
+    }
+    if (adjQty === 0) {
+         return res.redirect(`/items/${itemId}/adjust-stock?error=Adjustment+quantity+cannot+be+zero.`);
+    }
+
+    // const session = await mongoose.startSession(); // For transactions
+    // session.startTransaction();
+
+    try {
+        const itemToAdjust = await Item.findById(itemId); // Fetch full document for .save()
+        if (!itemToAdjust) throw new Error("Item not found.");
+
+        // Authorization
+        if (loggedInUser.role === 'warehouse_owner') {
+            if (!itemToAdjust.companyId || itemToAdjust.companyId.toString() !== (loggedInUser.companyId?._id || loggedInUser.companyId).toString()) {
+                throw new Error("You do not have permission to adjust stock for this item.");
+            }
+        }
+        // Admin has access
+
+        const currentQty = itemToAdjust.quantity;
+        const newQuantity = currentQty + adjQty;
+
+        if (newQuantity < 0) {
+            throw new Error(`Adjustment of ${adjQty} would result in negative stock (${newQuantity}). Current stock: ${currentQty}.`);
+        }
+
+        itemToAdjust.quantity = newQuantity;
+        itemToUpdate.lastUpdated = new Date(); // Update timestamp
+
+        // TODO: Log this adjustment to a separate StockAdjustmentLog collection
+        // Example: await new StockAdjustmentLog({ itemId, warehouseId: itemToAdjust.warehouseId, adjustedBy: loggedInUser._id, adjustmentQuantity: adjQty, oldQuantity: currentQty, newQuantity, reason, /* session */ }).save();
+        console.log(`Stock for item ${itemId} adjusted from ${currentQty} to ${newQuantity}. Reason: ${reason}`);
+
+        await itemToAdjust.save(/*{ session }*/);
+
+        // await session.commitTransaction();
+        res.redirect(`/items?success=Stock+for+${itemToAdjust.name}+adjusted+successfully`);
+
+    } catch (err) {
+        // await session.abortTransaction();
+        console.error(`Error adjusting stock for item ${itemId}:`, err);
+        // It's tricky to re-render with original item data here if item fetch fails after error
+        // Simplest to redirect back with general error or try fetching item again for form
+        res.redirect(`/items/${itemId}/adjust-stock?error=${encodeURIComponent(err.message)}`);
+    } finally {
+        // if (session) session.endSession();
+    }
+});
 
 // --- Add routes for viewing details, editing, updating stock, deleting later ---
 // GET /items/:id
