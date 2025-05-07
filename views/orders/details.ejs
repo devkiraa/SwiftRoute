@@ -107,79 +107,90 @@
                 </div>
              </div>
 
-             <%# --- Action Section --- %>
-             <%# Check if allowedActions object exists %>
-             <% if(typeof allowedActions !== 'undefined' && allowedActions && (allowedActions.canUpdateStatus || allowedActions.canAssignDelivery)) { %>
+             <% if(typeof allowedActions === 'object' && allowedActions && (allowedActions.canUpdateStatus || allowedActions.canAssignDelivery || true)) { // Added true for invoice always %>
                 <div class="mt-6 pt-4 border-t">
                     <h3 class="text-base font-semibold text-gray-700 mb-3">Actions</h3>
-                    <div class="space-y-4 md:space-y-0 md:flex md:items-start md:space-x-4"> <%# Adjusted alignment %>
-
-                        <%# --- Edit Order Button --- %>
-                        <%# Check status, user role, and if user has general access to store data %>
+                    <div class="space-y-4 md:space-y-0 md:flex md:items-start md:flex-wrap md:gap-4">
+    
                         <% if (['pending', 'confirmed'].includes(order.orderStatus) && locals.loggedInUser && ['admin', 'warehouse_owner', 'store_owner', 'employee'].includes(loggedInUser.role) && canEditOrder) { %>
-                            <div class="flex-shrink-0">
-                                <a href="/orders/<%= order._id %>/edit" class="inline-block px-3 py-2 border border-blue-500 text-blue-600 text-sm font-medium rounded-md hover:bg-blue-50">
-                                    Edit Order Items
-                                </a>
+                            <div class="flex-shrink-0 mb-2 md:mb-0">
+                                <a href="/orders/<%= order._id %>/edit" class="inline-block px-3 py-2 border border-blue-500 text-blue-600 text-sm font-medium rounded-md hover:bg-blue-50">Edit Order Items</a>
                             </div>
                         <% } %>
-                        <%# --- End Edit Order Button --- %>
-
-                        <%# --- Update Status Form --- %>
+    
                         <% if (allowedActions.canUpdateStatus) { %>
-                            <form action="/orders/<%= order._id %>/status?_method=PUT" method="POST" class="flex items-center space-x-2 flex-shrink-0"> <%# Requires method-override %>
-                                <label for="newStatus" class="text-sm font-medium text-gray-700 whitespace-nowrap">Status:</label>
-                                <select name="newStatus" id="newStatus" class="block w-full max-w-[150px] px-3 py-1.5 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm">
-                                     <% const currentStatus = order.orderStatus; %>
-                                     <option value="" disabled selected>Change to...</option>
-                                     <% if (currentStatus === 'pending') { %> <option value="confirmed">Confirm</option> <option value="cancelled">Cancel</option> <% } %>
-                                     <% if (currentStatus === 'confirmed') { %> <option value="shipped">Ship</option> <option value="cancelled">Cancel</option> <% } %>
-                                     <% if (currentStatus === 'shipped') { %> <option value="delivered">Deliver</option> <% } %>
-                                </select>
-                                <button type="submit" class="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-md hover:bg-green-700">Update</button>
-                            </form>
-                         <% } %>
-
-                         <%# --- Assign Driver Form --- %>
-                         <% if (allowedActions.canAssignDelivery) { %>
-                              <form action="/orders/<%= order._id %>/assign-driver" method="POST" class="flex-grow"> <%# Allow form to take space %>
+                            <%
+                                const currentStatus = order.orderStatus;
+                                let nextOptions = [];
+                                if (currentStatus === 'pending') { nextOptions = [['confirmed','Confirm'], ['cancelled','Cancel']]; }
+                                else if (currentStatus === 'confirmed') { nextOptions = [['shipped','Ship'], ['cancelled','Cancel']]; }
+                                else if (currentStatus === 'shipped') { nextOptions = [['delivered','Deliver'], ['cancelled','Cancel']]; } // Allow cancelling shipped?
+                            %>
+                            <% if (nextOptions.length > 0) { %>
+                                <form action="/orders/<%= order._id %>/status?_method=PUT" method="POST" class="flex items-center space-x-2 flex-shrink-0 mb-2 md:mb-0">
+                                    <label for="newStatus" class="text-sm font-medium text-gray-700 whitespace-nowrap">Status:</label>
+                                    <select name="newStatus" id="newStatus" required class="block w-full max-w-[150px] px-3 py-1.5 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm">
+                                        <option value="" disabled selected>Change to...</option>
+                                        <% nextOptions.forEach(opt => { %>
+                                            <option value="<%= opt[0] %>"><%= opt[1] %></option>
+                                        <% }); %>
+                                    </select>
+                                    <button type="submit" class="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-md hover:bg-green-700">Update</button>
+                                </form>
+                            <% } else { %>
+                                <p class="text-sm text-gray-500 italic flex-shrink-0 mb-2 md:mb-0">(No status actions available)</p>
+                            <% } %>
+                        <% } %>
+    
+                        <% if (allowedActions.canAssignDelivery) { %>
+                             <form action="/orders/<%= order._id %>/assign-driver" method="POST" class="flex-grow mb-2 md:mb-0">
                                 <label for="driverId" class="block text-sm font-medium text-gray-700 mb-1"> Assign Delivery Partner </label>
                                 <% if (order.assignedDeliveryPartnerId) { %>
                                     <p class="text-sm text-gray-600 mb-2"> Assigned: <span class="font-medium"><%= order.assignedDeliveryPartnerId.username %></span> (<a href="#" onclick="event.preventDefault(); document.getElementById('unassign-form-<%= order._id %>').submit();" class="text-red-600 hover:underline text-xs">Unassign</a>) </p>
-                                <% } else { %>
-                                    <p class="text-sm text-gray-500 italic mb-2">Not assigned</p>
-                                <% } %>
+                                <% } else { %> <p class="text-sm text-gray-500 italic mb-2">Not assigned</p> <% } %>
                                 <div class="flex items-center space-x-2">
-                                     <select name="driverId" id="driverId" required class="block w-full max-w-xs px-3 py-1.5 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm">
-                                         <option value="">-- Select Driver --</option>
-                                         <% if (typeof availableDrivers !== 'undefined' && availableDrivers.length > 0) { %>
-                                             <% availableDrivers.forEach(driver => { %>
-                                                 <option value="<%= driver._id %>" <%= order.assignedDeliveryPartnerId?._id.toString() === driver._id.toString() ? 'selected' : '' %>>
-                                                     <%= driver.username %>
-                                                 </option>
-                                             <% }) %>
-                                         <% } else { %>
-                                             <option value="" disabled>No drivers available</option>
-                                         <% } %>
-                                     </select>
-                                     <button type="submit" class="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700" <%= !availableDrivers || availableDrivers.length === 0 ? 'disabled' : '' %>>
+                                    <select name="driverId" id="driverId" class="block w-full max-w-xs px-3 py-1.5 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm">
+                                        <option value="">-- Select Driver --</option> <%# Empty option for unassigning %>
+                                        <% if (typeof availableDrivers !== 'undefined' && availableDrivers.length > 0) { %>
+                                            <% availableDrivers.forEach(driver => { %>
+                                                <option value="<%= driver._id %>" <%= order.assignedDeliveryPartnerId?._id.toString() === driver._id.toString() ? 'selected' : '' %>>
+                                                    <%= driver.username %>
+                                                </option>
+                                            <% }); %>
+                                        <% } else if (!order.assignedDeliveryPartnerId) { %>
+                                            <option value="" disabled>No drivers available</option>
+                                        <% } %>
+                                    </select>
+                                    <button type="submit" class="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700" <%# Disable if no drivers and none assigned %>>
                                         <%= order.assignedDeliveryPartnerId ? 'Re-assign' : 'Assign' %>
                                     </button>
                                 </div>
-                             </form>
-                             <%# Hidden form for unassign action %>
-                             <% if (order.assignedDeliveryPartnerId) { %>
-                                <form id="unassign-form-<%= order._id %>" action="/orders/<%= order._id %>/assign-driver" method="POST" class="hidden">
-                                    <input type="hidden" name="driverId" value=""> <%# Submit empty value to unassign %>
-                                </form>
-                             <% } %>
+                            </form>
+                            <% if (order.assignedDeliveryPartnerId) { %>
+                               <form id="unassign-form-<%= order._id %>" action="/orders/<%= order._id %>/assign-driver" method="POST" class="hidden">
+                                   <input type="hidden" name="driverId" value="">
+                               </form>
+                            <% } %>
+                        <% } %>
+    
+                        <% if (['admin', 'warehouse_owner', 'store_owner'].includes(locals.loggedInUser.role)) { %>
+                            <div class="flex-shrink-0 mb-2 md:mb-0">
+                                <a href="/orders/<%= order._id %>/invoice/pdf"
+                                   target="_blank"
+                                   class="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                                    <svg class="-ml-1 mr-2 h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                      <path fill-rule="evenodd" d="M6 2a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V7.414A2 2 0 0015.414 6L12 2.586A2 2 0 0010.586 2H6zm5 6a1 1 0 10-2 0v3.586l-1.293-1.293a1 1 0 10-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 11.586V8z" clip-rule="evenodd" />
+                                    </svg>
+                                    Download Invoice
+                                </a>
+                            </div>
                          <% } %>
+    
                     </div>
-                 </div>
+                </div>
             <% } %>
-            <%# --- End Action Section --- %>
         </div>
-    <% } else { %>
-         <p class="text-center text-gray-500">Order data could not be loaded.</p>
-    <% } %>
-</section>
+        <% } else { %>
+            <p class="text-center text-gray-500">Order data could not be loaded.</p>
+        <% } %>
+    </section>

@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Invoice - <%= order._id %></title>
+    <style>
+        body { font-family: 'Helvetica Neue', 'Helvetica', Helvetica, Arial, sans-serif; font-size: 10px; color: #333; }
+        .invoice-box { max-width: 800px; margin: auto; padding: 20px; border: 1px solid #eee; box-shadow: 0 0 10px rgba(0, 0, 0, .15); }
+        .invoice-box table { width: 100%; line-height: inherit; text-align: left; border-collapse: collapse; }
+        .invoice-box table td { padding: 5px; vertical-align: top; }
+        .invoice-box table tr td:nth-child(n+2) { text-align: right; } /* Align numbers to right */
+        .invoice-box table tr.top table td { padding-bottom: 20px; }
+        .invoice-box table tr.top table td.title { font-size: 30px; line-height: 30px; color: #333; }
+        .invoice-box table tr.information table td { padding-bottom: 20px; }
+        .invoice-box table tr.heading td { background: #eee; border-bottom: 1px solid #ddd; font-weight: bold; text-align: left; } /* Ensure heading text is left aligned */
+         .invoice-box table tr.heading td:nth-child(n+3) { text-align: right; } /* Align quantity, rate, amount to right */
+        .invoice-box table tr.details td { padding-bottom: 10px; }
+        .invoice-box table tr.item td { border-bottom: 1px solid #eee; text-align: left; } /* Ensure item text is left aligned */
+        .invoice-box table tr.item td:nth-child(n+3) { text-align: right; } /* Align quantity, rate, amount to right */
+        .invoice-box table tr.item.last td { border-bottom: none; }
+        .invoice-box table tr.total td:nth-child(2) { border-top: 2px solid #eee; font-weight: bold; }
+        .text-center { text-align: center !important; }
+        .text-right { text-align: right !important; }
+        .text-left { text-align: left !important; }
+        .font-bold { font-weight: bold; }
+        .company-header h1 { margin: 0; font-size: 1.8em; }
+        .company-header p { margin: 2px 0; }
+        .address-block { width: 48%; display: inline-block; vertical-align: top; margin-bottom: 15px;}
+        .invoice-details-block { margin-bottom: 20px; }
+        .invoice-details-block div { margin-bottom: 3px;}
+        .item-table th, .item-table td { border: 1px solid #ddd; padding: 6px;}
+        .item-table th { background: #f9f9f9; }
+        .totals-section { margin-top: 20px; }
+        .totals-section table { width: 40%; float: right; }
+        .totals-section table td { text-align: right;}
+        .totals-section table tr td:first-child { text-align: left; }
+        .footer-notes { margin-top: 30px; border-top: 1px solid #eee; padding-top: 10px; font-size: 9px; }
+        .clear { clear: both; }
+        .signatures { margin-top: 40px; }
+        .signatures div { width: 40%; display: inline-block; text-align: center; }
+        .signatures div.receiver { float: left; }
+        .signatures div.sender { float: right; }
+
+        /* Based on Sample 1 - PRASANTH STORES */
+        .invoice-pras { /* Similar to invoice-box */ }
+        .invoice-pras .header-top { text-align: center; margin-bottom: 10px;}
+        .invoice-pras .header-top .store-name { font-size: 1.5em; font-weight: bold; margin-bottom: 2px;}
+        .invoice-pras .header-top p { margin: 1px 0; font-size: 0.8em; }
+        .invoice-pras .invoice-meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 20px; font-size: 0.8em; margin-bottom: 10px; padding-bottom:10px; border-bottom: 1px dashed #ccc;}
+        .invoice-pras .address-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; font-size: 0.8em; margin-bottom: 10px; padding-bottom:10px; border-bottom: 1px dashed #ccc;}
+        .invoice-pras .address-grid div { padding: 5px; border: 1px solid #f0f0f0; }
+        .invoice-pras .address-grid h5 { font-weight: bold; margin: 0 0 3px 0; padding-bottom: 2px; border-bottom: 1px solid #eee; }
+        .invoice-pras .item-table { font-size: 0.8em; }
+        .invoice-pras .item-table th, .invoice-pras .item-table td { padding: 4px; }
+        .invoice-pras .item-table th:nth-child(1), .invoice-pras .item-table td:nth-child(1) { width: 5%; } /* SR */
+        .invoice-pras .item-table th:nth-child(2), .invoice-pras .item-table td:nth-child(2) { width: 10%; } /* HSN */
+        .invoice-pras .item-table th:nth-child(3), .invoice-pras .item-table td:nth-child(3) { width: 25%; text-align: left; } /* Item Name */
+        .invoice-pras .item-table th:nth-child(n+4), .invoice-pras .item-table td:nth-child(n+4) { text-align: right; } /* Rest numeric */
+
+        .invoice-pras .summary-grid { display: grid; grid-template-columns: 1fr auto; gap: 10px; margin-top: 10px; font-size: 0.8em; }
+        .invoice-pras .summary-grid .tax-breakdown { /* styles for tax table */ }
+        .invoice-pras .summary-grid .grand-totals table { width: 100%; }
+        .invoice-pras .summary-grid .grand-totals td { padding: 3px 0; }
+        .invoice-pras .summary-grid .grand-totals td:last-child { text-align: right; font-weight: bold; }
+        .invoice-pras .amount-in-words { font-size: 0.8em; font-style: italic; margin: 5px 0 10px 0; }
+        .invoice-pras .bank-details { font-size: 0.75em; border-top: 1px dashed #ccc; padding-top:10px; margin-top:10px;}
+        .invoice-pras .bank-details p { margin: 1px 0;}
+        .invoice-pras .signature-area { text-align: right; margin-top: 30px; font-size: 0.8em;}
+        .invoice-pras .footer { text-align: center; font-size: 0.7em; margin-top: 20px; border-top: 1px solid #ccc; padding-top:5px;}
+    </style>
+</head>
+<body>
+    <div class="invoice-box invoice-pras"> <header class="header-top">
+            <div class="store-name"><%= seller.companyName || 'SELLER COMPANY NAME' %></div>
+            <p><%= seller.address?.street %>, <%= seller.address?.city %></p>
+            <p><%= seller.address?.state %> - <%= seller.address?.pincode %>, <%= seller.address?.country %></p>
+            <p>Phone: <%= seller.mobileNumber || 'N/A' %></p>
+            <% if (seller.contactEmail) { %><p>E-Mail: <%= seller.contactEmail %></p><% } %>
+            <% if (seller.gstin) { %><p>GSTIN: <%= seller.gstin %></p><% } %>
+            <% if (seller.fssaiLicenseNo) { %><p>FoodLic: <%= seller.fssaiLicenseNo %></p><% } %>
+        </header>
+
+        <div class="invoice-meta-grid">
+            <div><strong>Invoice No:</strong> <%= order.invoiceNumber || order._id.toString().slice(-6).toUpperCase() %></div>
+            <div><strong>Date:</strong> <%= new Date(order.placedDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) %></div>
+            <div><strong>Order No:</strong> <%= order.orderNumber || order._id.toString().slice(-6).toUpperCase() %></div>
+            <% if (order.vehicleNumber) { %><div><strong>Veh No:</strong> <%= order.vehicleNumber %></div><% } %>
+            <div><strong>Bill Type:</strong> <%= order.billType || 'CREDIT' %></div>
+            <% if (order.ackNo) { %><div><strong>Ack No:</strong> <%= order.ackNo %></div><% } %>
+            <% if (order.irn) { %><div><strong>IRN:</strong> <%= order.irn %></div><% } %>
+            <% if (order.salesmanName) { %><div><strong>Salesman Name:</strong> <%= order.salesmanName %></div><% } %>
+        </div>
+
+        <div class="address-grid">
+            <div>
+                <h5>Details of Receiver (Billed To)</h5>
+                <p><strong><%= receiver.name || 'RECEIVER NAME' %></strong></p>
+                <p><%= receiver.address?.street %></p>
+                <p><%= receiver.address?.city %>, <%= receiver.address?.state %> - <%= receiver.address?.pincode %></p>
+                <p>State: <%= receiver.address?.state %> <span style="float:right;">State Code: <%= receiver.stateCode || 'N/A' %></span></p>
+                <% if (receiver.gstin) { %><p>GSTIN: <%= receiver.gstin %></p><% } %>
+                <% if (receiver.mobile) { %><p>Mobile: <%= receiver.mobile %></p><% } %>
+            </div>
+            <div>
+                <h5>Details of Consignee (Shipped To)</h5>
+                <p><strong><%= consignee.name || 'CONSIGNEE NAME' %></strong></p>
+                <p><%= consignee.address?.street %></p>
+                <p><%= consignee.address?.city %>, <%= consignee.address?.state %> - <%= consignee.address?.pincode %></p>
+                <p>State: <%= consignee.address?.state %> <span style="float:right;">State Code: <%= consignee.stateCode || 'N/A' %></span></p>
+                <% if (consignee.gstin) { %><p>GSTIN: <%= consignee.gstin %></p><% } %>
+            </div>
+        </div>
+
+        <table class="item-table">
+            <thead>
+                <tr class="heading">
+                    <td>SR</td>
+                    <td>HSN</td>
+                    <td class="text-left">Item Name</td>
+                    <td>Unit</td>
+                    <td>Qty</td>
+                    <td>Rate</td>
+                    <td>Disc</td>
+                    <td>Taxable</td>
+                    <td>GST%</td>
+                    <td>GST</td>
+                    <td>Total</td>
+                </tr>
+            </thead>
+            <tbody>
+                <% let itemSubTotal = 0; let totalTaxableValue = 0; let totalGSTAmount = 0; let totalQuantity = 0; %>
+                <% order.orderItems.forEach((entry, index) => { %>
+                    <% const item = entry.itemId; %>
+                    <% const taxableValue = (entry.quantity * entry.priceAtOrder); /* Discount logic can be added here */ %>
+                    <% const gstRate = item.gstRate || 0; /* Assuming gstRate is on item */ %>
+                    <% const gstAmount = (taxableValue * gstRate) / 100; %>
+                    <% const lineTotal = taxableValue + gstAmount; %>
+                    <% itemSubTotal += lineTotal; %>
+                    <% totalTaxableValue += taxableValue; %>
+                    <% totalGSTAmount += gstAmount; %>
+                    <% totalQuantity += entry.quantity; %>
+                    <tr class="item">
+                        <td class="text-center"><%= index + 1 %></td>
+                        <td><%= item.hsnCode || '-' %></td>
+                        <td class="text-left"><%= item.name %></td>
+                        <td class="text-center"><%= item.uom?.toUpperCase() || 'PCS' %></td>
+                        <td class="text-right"><%= entry.quantity %></td>
+                        <td class="text-right"><%= entry.priceAtOrder.toFixed(2) %></td>
+                        <td class="text-right">0</td> <td class="text-right"><%= taxableValue.toFixed(2) %></td>
+                        <td class="text-center"><%= gstRate %>%</td>
+                        <td class="text-right"><%= gstAmount.toFixed(2) %></td>
+                        <td class="text-right"><%= lineTotal.toFixed(2) %></td>
+                    </tr>
+                <% }); %>
+                <tr class="heading">
+                    <td colspan="4" class="text-right font-bold">TOTAL</td>
+                    <td class="text-right font-bold"><%= totalQuantity %></td>
+                    <td></td> <td></td> <td class="text-right font-bold"><%= totalTaxableValue.toFixed(2) %></td>
+                    <td></td> <td class="text-right font-bold"><%= totalGSTAmount.toFixed(2) %></td>
+                    <td class="text-right font-bold"><%= itemSubTotal.toFixed(2) %></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="summary-grid">
+            <div class="tax-breakdown">
+                <table style="width: 250px; font-size: 0.75em; margin-top: 10px; border: 1px solid #ccc;">
+                     <tr class="heading" style="background: #f0f0f0;">
+                         <td class="text-left">GST %</td>
+                         <td class="text-right">Taxable</td>
+                         <td class="text-right">CGST</td>
+                         <td class="text-right">SGST</td>
+                         <td class="text-right">Total GST</td>
+                     </tr>
+                     <%# This needs actual data grouped by GST rate from the backend %>
+                     <% if (typeof gstSummary !== 'undefined' && gstSummary) { %>
+                        <% Object.entries(gstSummary).forEach(([rate, amounts]) => { %>
+                            <tr>
+                                <td class="text-left">IGST <%= rate %>%</td>
+                                <td class="text-right"><%= amounts.taxable.toFixed(2) %></td>
+                                <td class="text-right"><%= (amounts.gst / 2).toFixed(2) %></td> <td class="text-right"><%= (amounts.gst / 2).toFixed(2) %></td>
+                                <td class="text-right"><%= amounts.gst.toFixed(2) %></td>
+                            </tr>
+                        <% }) %>
+                     <% } else { %>
+                        <tr><td colspan="5" class="text-center">GST summary N/A</td></tr>
+                     <% } %>
+                </table>
+            </div>
+            <div class="grand-totals">
+                <table>
+                    <tr><td>Sub Total:</td><td>₹<%= totalTaxableValue.toFixed(2) %></td></tr>
+                    <tr><td>Total GST:</td><td>₹<%= totalGSTAmount.toFixed(2) %></td></tr>
+                    <% if (order.discountAmount) { %><tr><td>Discount:</td><td>₹<%= order.discountAmount.toFixed(2) %></td></tr><% } %>
+                    <% if (order.roundOff) { %><tr><td>Round Off:</td><td>₹<%= order.roundOff.toFixed(2) %></td></tr><% } %>
+                    <tr class="font-bold" style="border-top: 1px solid #333; border-bottom: 1px solid #333; font-size: 1.1em;">
+                        <td>INVOICE TOTAL:</td>
+                        <td>₹<%= order.grandTotal ? order.grandTotal.toFixed(2) : itemSubTotal.toFixed(2) %></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        <div class="clear"></div>
+
+        <div class="amount-in-words">
+            Invoice Value (In Words): <%= order.amountInWords || 'RUPEES ... TO BE IMPLEMENTED ... ONLY' %>
+        </div>
+
+        <% if (seller.bankDetails && (seller.bankDetails.bankName || seller.bankDetails.upiId)) { %>
+        <div class="bank-details">
+            <p><strong>BANK DETAILS:</strong></p>
+            <% if (seller.bankDetails.bankName) { %><p>Bank Name: <%= seller.bankDetails.bankName %>, Branch: <%= seller.bankDetails.branchName || 'N/A' %></p><% } %>
+            <% if (seller.bankDetails.accountNumber) { %><p>Account No: <%= seller.bankDetails.accountNumber %>, IFSC Code: <%= seller.bankDetails.ifscCode || 'N/A' %></p><% } %>
+            <% if (seller.bankDetails.upiId) { %><p>GPAY: <%= seller.bankDetails.upiId %></p><% } %>
+        </div>
+        <% } %>
+
+        <div class="footer-notes">
+            <p>Terms & Conditions: 1. Goods once sold will not be taken back or exchanged. 2. Interest @18% p.a. will be charged if the bill is not paid within 30 days. 3. Our responsibility ceases once goods leave our premises. Subject to PATHANAMTHITTA Jurisdiction.</p>
+            <p style="text-align:center; font-weight:bold; margin-top:10px;">THIS IS A COMPUTER GENERATED INVOICE AND DOES NOT REQUIRE SIGNATURE</p>
+        </div>
+
+        <div class="signatures">
+             <div class="receiver"><br><br>--------------------------<br>Receiver's Signature</div>
+             <div class="sender">For <%= seller.companyName || 'SELLER COMPANY NAME' %><br><br><br>--------------------------<br>Authorised Signatory</div>
+        </div>
+        <div class="clear"></div>
+
+        <div class="footer">
+            Horizon ERP www.horizontechnodisplays.co.in | Print Time: <%= new Date().toLocaleString('en-IN') %>
+        </div>
+    </div>
+</body>
+</html>

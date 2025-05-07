@@ -99,68 +99,120 @@
     let ordersList = [];
     let originDetails = null;
 
-    function parseServerData() { /* ... Keep implementation ... */ }
+    function parseServerData() {
+        try {
+            console.log("Parsing server data...");
+            routePolyline = JSON.parse(rawRoutePolyline); // This will be the OSRM encoded polyline string (or null)
+            ordersList = JSON.parse(rawAssignedOrders);   // These are already in OSRM/NN optimized order
+            originDetails = JSON.parse(rawOriginWarehouse);
+            console.log("Parsed data:", { routePolylineExists: !!routePolyline, ordersCount: ordersList.length, originExists: !!originDetails });
+            return true;
+        } catch (e) {
+            console.error("Error parsing server data:", e);
+            if(mapDiv) mapDiv.innerHTML = '<p class="text-center p-4 text-red-600">Error processing route data from server.</p>';
+            if(loader) loader.style.display = 'none';
+            return false;
+        }
+    }
 
     async function initRouteMap() {
-        console.log("Attempting initRouteMap()...");
-        if (!parseServerData()) { return; }
+        console.log("Attempting initRouteMap() for OSRM route display...");
+        if (!parseServerData()) {
+             console.log("Halting map initialization due to parsing error.");
+             return;
+        }
 
         try {
-            if (!google?.maps?.Map) { throw new Error("Maps API not loaded."); } // Simplified check
+            if (typeof google === 'undefined' || !google.maps?.Map || !google.maps?.geometry?.encoding || !google.maps?.marker?.AdvancedMarkerElement) {
+                 throw new Error("Google Maps script/libraries (Map, Marker, Geometry) did not load properly.");
+            }
 
             const { Map, InfoWindow, LatLngBounds, Polyline } = await google.maps.importLibrary("maps");
             const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
-            const { encoding } = await google.maps.importLibrary("geometry");
-            console.log("Route Map Libraries Loaded");
+            const { encoding } = await google.maps.importLibrary("geometry"); // For decoding OSRM polyline
+            console.log("Google Maps Libraries Loaded for OSRM display");
 
-            let mapCenter = { lat: 12.9716, lng: 77.5946 };
-            // Calculate center based on origin or first order
-            if (originDetails?.location?.coordinates) { /* ... set mapCenter ... */ }
-            else if (ordersList[0]?.shippingLocation?.coordinates) { /* ... set mapCenter ... */ }
+            let mapCenter = { lat: 12.9716, lng: 77.5946 }; // Default
+            if (originDetails?.location?.coordinates?.length === 2) {
+                mapCenter = { lat: parseFloat(originDetails.location.coordinates[1]), lng: parseFloat(originDetails.location.coordinates[0]) };
+            } else if (ordersList[0]?.shippingLocation?.coordinates?.length === 2) {
+                 const firstOrderLoc = ordersList[0].shippingLocation.coordinates;
+                 mapCenter = { lat: parseFloat(firstOrderLoc[1]), lng: parseFloat(firstOrderLoc[0]) };
+            }
             console.log("Map Center:", mapCenter);
 
-            map = new Map(mapDiv, { /* ... map options ... */ });
+            map = new Map(mapDiv, { center: mapCenter, zoom: 11, mapId: "SWIFTROUTE_DELIVERY_MAP" });
+            mapDiv.classList.remove('flex', 'items-center', 'justify-center');
+            mapDiv.textContent = '';
             if(loader) loader.style.display = 'none';
             console.log("Map initialized.");
 
             const bounds = new google.maps.LatLngBounds();
 
-            // Add Origin Marker (Keep logic)
-            if (originDetails?.location?.coordinates) { /* ... */ }
+            // Add Origin Marker
+            if (originDetails?.location?.coordinates?.length === 2) {
+                const originLat = parseFloat(originDetails.location.coordinates[1]);
+                const originLng = parseFloat(originDetails.location.coordinates[0]);
+                if (!isNaN(originLat) && !isNaN(originLng)) {
+                    const originPos = { lat: originLat, lng: originLng };
+                    const originMarkerContent = document.createElement('div');
+                    originMarkerContent.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-8 h-8 text-red-600"><path fill-rule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a1 1 0 110 2h-3v-7a1 1 0 00-1-1H9a1 1 0 00-1 1v7H5a1 1 0 110-2V6H4V4zm10 4V6h-2v2h2zM8 8V6H6v2h2z" clip-rule="evenodd" /></svg>`;
+                    new AdvancedMarkerElement({ map, position: originPos, title: `${originDetails.name} (Warehouse)`, content: originMarkerContent, zIndex: 1 });
+                    bounds.extend(originPos);
+                    console.log("Origin marker added at:", originPos);
+                }
+            }
 
-            // Add Destination Markers using ordersList (already optimized order)
-            if (ordersList?.length > 0) {
-                 ordersList.forEach((order, index) => {
-                    // ... (Keep logic to find destLat/destLng) ...
+            // Add Destination Markers (using ordersList which is already sorted by backend)
+            ordersList.forEach((order, index) => {
+                const deliveryLocData = order.shippingLocation?.coordinates?.length === 2 ? order.shippingLocation : order.storeId?.location;
+                if(deliveryLocData?.coordinates?.length === 2){
+                    const destLat = parseFloat(deliveryLocData.coordinates[1]);
+                    const destLng = parseFloat(deliveryLocData.coordinates[0]);
                     if (!isNaN(destLat) && !isNaN(destLng)) {
-                         const pos = { lat: destLat, lng: destLng };
-                         // Use index + 1 for the stop number from the optimized list
-                         const marker = new AdvancedMarkerElement({ /* ... content: buildMarkerContent(index + 1) ... */ });
-                         // ... Add InfoWindow ...
-                         bounds.extend(pos);
-                     }
-                 });
-                 console.log(`Added ${ordersList.length} destination markers.`);
-             }
+                        const pos = { lat: destLat, lng: destLng };
+                        const marker = new AdvancedMarkerElement({
+                            map, position: pos, zIndex: index + 2,
+                            title: `Stop ${index + 1}: ${order.customerName || order.storeId?.storeName || 'Delivery'}`,
+                            content: buildMarkerContent(index + 1)
+                         });
+                        const infoContent = `<b>Stop ${index + 1}: ${order.customerName || 'Delivery'}</b><br>${order.shippingAddress || ''}${order.storeId?.storeName ? '<br>(Store: '+order.storeId.storeName+')' : ''}`;
+                        const info = new InfoWindow({ content: infoContent });
+                        marker.addListener('click', () => info.open({ map: map, anchor: marker }));
+                        bounds.extend(pos);
+                    }
+                } else { console.warn(`Skipping marker for order ${order._id} (no valid coords).`); }
+            });
+            console.log(`Added ${ordersList.length} destination markers.`);
 
-            // Draw **OVERVIEW** Polyline using the single string passed
-            if (routePolyline) {
-                console.log("Drawing overview route polyline...");
+            // Draw Polyline from OSRM
+            if (routePolyline) { // This is the geometry string from OSRM
+                console.log("Decoding and drawing OSRM route polyline...");
                 try {
-                    const decodedPath = encoding.decodePath(routePolyline);
-                    new Polyline({ path: decodedPath, map: map, /* ... styles ... */ });
-                    console.log("Route polyline drawn.");
-                } catch (polyError) { console.error("Error drawing polyline:", polyError); }
-            } else { console.log("Route polyline not available."); }
+                    const decodedPath = google.maps.geometry.encoding.decodePath(routePolyline);
+                    new Polyline({ path: decodedPath, map: map, strokeColor: '#007bff', strokeWeight: 6, strokeOpacity: 0.7 });
+                    console.log("OSRM Route polyline drawn.");
+                } catch (polyError) { console.error("Error decoding/drawing OSRM polyline:", polyError); }
+            } else { console.log("OSRM route polyline not available."); }
 
-            // Fit Map (Keep logic)
-            if (ordersList.length > 0 && !bounds.isEmpty()) { /* ... */ }
-            else if (ordersList.length === 0) { /* ... */ }
-            else { /* ... */ }
+            if (ordersList.length > 0 && !bounds.isEmpty()) {
+                map.fitBounds(bounds);
+                google.maps.event.addListenerOnce(map, 'idle', () => { map.panToBounds(bounds, {top: 50, bottom: 50, left: 50, right: 50}); });
+            } else if (originDetails && !bounds.isEmpty()){ // Only origin shown
+                 map.setCenter(bounds.getCenter()); map.setZoom(14);
+            } else { mapDiv.innerHTML = '<p class="text-center p-4">No locations to display on map.</p>'; if(loader) loader.style.display = 'none';}
 
-        } catch (err) { /* ... error handling ... */ }
-    } // End initRouteMap
+        } catch (err) {
+             console.error("Error initializing map:", err);
+             mapDiv.innerHTML = `<p class="text-center p-4 text-red-600">Error loading map: ${err.message}</p>`;
+             if(loader) loader.style.display = 'none';
+        }
+    }
 
-    function buildMarkerContent(stopNumber) { /* ... Keep implementation ... */ }
-
+    function buildMarkerContent(stopNumber) {
+         const element = document.createElement('div');
+         element.className = 'w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold border-2 border-white shadow drop-shadow';
+         element.textContent = stopNumber;
+         return element;
+    }
 </script>
