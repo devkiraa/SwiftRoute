@@ -26,7 +26,7 @@ const warehouseRoutes = require('./routes/warehouses');
 const itemRoutes = require('./routes/items'); 
 // Require other routes as you create them:
 // const warehouseRoutes = require('./routes/warehouses');
-// const itemRoutes = require('./routes/items');
+const vehicleRoutes = require('./routes/vehicles');
 const orderRoutes = require('./routes/orders');
 const reportingRoutes = require('./routes/reporting');
 const adminRoutes = require('./routes/admin'); // If you separate admin routes
@@ -127,7 +127,7 @@ app.use('/', indexRoutes);       // Handles /, /dashboard, /login, /logout, /reg
 app.use('/stores', storeRoutes); // Handles /stores, /stores/new etc.
 app.use('/users', userRoutes);   // Handles /users, /users/new etc.
 app.use('/warehouses', warehouseRoutes);
-// Mount other routes as they are created:
+app.use('/vehicles', vehicleRoutes); 
 app.use('/deliveries', deliveryRoutes); 
 app.use('/items', itemRoutes);
 app.use('/orders', orderRoutes);

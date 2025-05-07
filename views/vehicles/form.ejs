@@ -1,0 +1,126 @@
+<% locals.pageTitle = typeof title !== 'undefined' ? title : (isEditing ? 'Edit Vehicle' : 'Add New Vehicle'); %>
+<% const isEditing = typeof vehicle !== 'undefined' && vehicle && vehicle._id; %>
+<% const localVehicleTypes = typeof vehicleTypes !== 'undefined' ? vehicleTypes : []; %>
+<% const localFuelTypes = typeof fuelTypes !== 'undefined' ? fuelTypes : []; %>
+
+<header class="py-3 px-6 border-b border-gray-200 bg-white shadow-sm flex-shrink-0">
+    <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold text-gray-800"><%= locals.pageTitle %></h2>
+        <a href="/vehicles" class="inline-block px-3 py-1.5 border border-gray-300 text-xs font-medium text-gray-700 rounded-md hover:bg-gray-50">Cancel</a>
+    </div>
+</header>
+
+<section class="p-6 flex-1 overflow-y-auto">
+    <div class="max-w-2xl mx-auto">
+        <% if (typeof error === 'string' && error && error.trim() !== '') { %>
+            <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md relative" role="alert">
+                <strong class="font-bold">Error: </strong>
+                <span class="block sm:inline"><%= error %></span>
+            </div>
+        <% } %>
+
+        <form action="<%= isEditing ? '/vehicles/' + vehicle._id + '?_method=PUT' : '/vehicles' %>" method="POST" class="bg-white p-6 border rounded-lg shadow-sm space-y-5">
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div>
+                    <label for="vehicleNumber" class="block text-sm font-medium text-gray-700 mb-1">Vehicle Number <span class="text-red-500">*</span></label>
+                    <input type="text" id="vehicleNumber" name="vehicleNumber" 
+                           value="<%= typeof formData.vehicleNumber !== 'undefined' ? formData.vehicleNumber : (vehicle.vehicleNumber || '') %>" 
+                           required placeholder="e.g., KL01AB1234"
+                           class="mt-1 block w-full uppercase px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                </div>
+                <div>
+                    <label for="modelName" class="block text-sm font-medium text-gray-700 mb-1">Make & Model <span class="text-red-500">*</span></label>
+                    <input type="text" id="modelName" name="modelName" 
+                           value="<%= typeof formData.modelName !== 'undefined' ? formData.modelName : (vehicle.modelName || '') %>" 
+                           required placeholder="e.g., Tata Ace Gold"
+                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div>
+                    <label for="type" class="block text-sm font-medium text-gray-700 mb-1">Vehicle Type <span class="text-red-500">*</span></label>
+                    <select id="type" name="type" required class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        <option value="">-- Select Type --</option>
+                        <% localVehicleTypes.forEach(typeOpt => { %>
+                            <% const valToCompare = typeof formData.type !== 'undefined' ? formData.type : vehicle.type; %>
+                            <option value="<%= typeOpt %>" <%= (valToCompare === typeOpt) ? 'selected' : '' %> class="capitalize"><%= typeOpt.replace(/_/g, ' ') %></option>
+                        <% }); %>
+                    </select>
+                </div>
+                <div>
+                    <label for="fuelType" class="block text-sm font-medium text-gray-700 mb-1">Fuel Type</label>
+                    <select id="fuelType" name="fuelType" class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        <option value="">-- Select Fuel Type --</option>
+                        <% localFuelTypes.forEach(fuelOpt => { %>
+                             <% const valToCompare = typeof formData.fuelType !== 'undefined' ? formData.fuelType : vehicle.fuelType; %>
+                            <option value="<%= fuelOpt %>" <%= (valToCompare === fuelOpt) ? 'selected' : '' %> class="capitalize"><%= fuelOpt %></option>
+                        <% }); %>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+                 <div>
+                    <label for="initialOdometer" class="block text-sm font-medium text-gray-700 mb-1">Initial Odometer (km)</label>
+                    <input type="number" id="initialOdometer" name="initialOdometer" 
+                           value="<%= typeof formData.initialOdometer !== 'undefined' ? formData.initialOdometer : (vehicle.initialOdometer !== undefined ? vehicle.initialOdometer : '0') %>" 
+                           min="0" 
+                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm <%= (isEditing && typeof vehicle.initialOdometer !== 'undefined') ? 'bg-gray-100 cursor-not-allowed' : '' %>" 
+                           <%= (isEditing && typeof vehicle.initialOdometer !== 'undefined') ? 'readonly' : '' %>>
+                     <% if (isEditing && typeof vehicle.initialOdometer !== 'undefined') { %> <p class="text-xs text-gray-500 mt-1">Initial odometer cannot be changed.</p> <% } %>
+                </div>
+                <div>
+                    <label for="capacityWeight" class="block text-sm font-medium text-gray-700 mb-1">Capacity (Weight in kg)</label>
+                    <input type="number" id="capacityWeight" name="capacityWeight" 
+                           value="<%= typeof formData.capacityWeight !== 'undefined' ? formData.capacityWeight : (vehicle.capacityWeight || '') %>" 
+                           placeholder="e.g., 750" min="0"
+                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                </div>
+                 <div>
+                    <label for="capacityVolume" class="block text-sm font-medium text-gray-700 mb-1">Capacity (Volume m³)</label>
+                    <input type="number" id="capacityVolume" name="capacityVolume" 
+                           value="<%= typeof formData.capacityVolume !== 'undefined' ? formData.capacityVolume : (vehicle.capacityVolume || '') %>" 
+                           placeholder="e.g., 3.5" min="0" step="0.1"
+                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                </div>
+            </div>
+
+            <div>
+                <label for="notes" class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                <textarea id="notes" name="notes" rows="3" placeholder="Any specific notes about the vehicle..."
+                          class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"><%= typeof formData.notes !== 'undefined' ? formData.notes : (vehicle.notes || '') %></textarea>
+            </div>
+            
+            <% if (isEditing) { %>
+            <div class="relative flex items-start">
+                <div class="flex items-center h-5">
+                    <% 
+                        let isActiveChecked = true; // Default for new, or if vehicle.isActive is undefined
+                        if (typeof formData.isActive !== 'undefined') {
+                            // If formData.isActive exists, it's likely from a form submission ('on' or undefined)
+                            isActiveChecked = (formData.isActive === 'on' || String(formData.isActive) === 'true');
+                        } else if (typeof vehicle.isActive !== 'undefined') {
+                            // If editing and no formData override, use vehicle's current state
+                            isActiveChecked = vehicle.isActive;
+                        }
+                    %>
+                    <input id="isActive" name="isActive" type="checkbox" <%= isActiveChecked ? 'checked' : '' %> class="focus:ring-blue-500 h-4 w-4 text-blue-600 border-gray-300 rounded">
+                </div>
+                <div class="ml-3 text-sm">
+                    <label for="isActive" class="font-medium text-gray-700">Vehicle is Active</label>
+                    <p class="text-gray-500 text-xs">Uncheck if vehicle is temporarily out of service.</p>
+                </div>
+            </div>
+            <% } %>
+
+            <div class="mt-6 pt-5 border-t border-gray-200 flex justify-end">
+                <a href="/vehicles" class="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 mr-3">Cancel</a>
+                <button type="submit" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    <%= isEditing ? 'Update Vehicle' : 'Add Vehicle' %>
+                </button>
+            </div>
+        </form>
+    </div>
+</section>
