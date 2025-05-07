@@ -83,22 +83,25 @@ router.get('/my', async (req, res) => {
 
 // GET /deliveries/map — OSRM + Nearest-Neighbor Optimization
 router.get('/map', async (req, res) => {
-    console.log('--- GET /deliveries/map (OSRM NN) ---');
     const loggedInUser = res.locals.loggedInUser;
-    let errorMsg = null;
     const googleMapsApiKeyForView = process.env.Maps_API_KEY;
+    let errorMsg = null;
     if (!googleMapsApiKeyForView) {
-      console.error("FATAL: Maps_API_KEY for frontend map display is missing!");
-      errorMsg = "Mapping service API key not configured for map display.";
+      console.error("FATAL: Maps_API_KEY missing!");
+      errorMsg = "Mapping service API key not configured.";
     }
   
     try {
-      // 1) Fetch active orders
+      // 1) Fetch active orders with item names populated
       const allAssignedOrders = await Order.find({
         assignedDeliveryPartnerId: loggedInUser._id,
         orderStatus: { $in: ['confirmed', 'shipped'] }
       })
       .populate('warehouseId', 'name location address')
+      .populate({
+        path: 'orderItems.itemId',
+        select: 'name'
+      })
       .populate('storeId', 'storeName address location')
       .lean();
   
@@ -133,7 +136,7 @@ router.get('/map', async (req, res) => {
           }
         });
       }
-  
+      
       if (!originalOrdersWithCoords.length) {
         return res.render('deliveries/route_map', {
           title: 'Delivery Route', orders: [], originWarehouse: originWarehouseForView,
@@ -176,44 +179,55 @@ router.get('/map', async (req, res) => {
       const fullPolyline = routeRes.data.routes[0].geometry;
   
       // 6) Build routeLegs
-      const routeLegs = [];
-      for (let k = 0; k < visitOrderIndices.length - 1; k++) {
-        const fromIdx = visitOrderIndices[k], toIdx = visitOrderIndices[k + 1];
-        const fromP = uniqueCoordsForOSRM[fromIdx], toP = uniqueCoordsForOSRM[toIdx];
-        routeLegs.push({
-          startName: fromP.name,
-          startAddress: fromP.address,
-          endName: toP.name,
-          endAddress: toP.address,
-          distance: distances[fromIdx][toIdx],
-          duration: durations[fromIdx][toIdx],
-          startCoords: { lat: fromP.lat, lng: fromP.lng },
-          endCoords: { lat: toP.lat, lng: toP.lng },
-          orderId: toP.type === 'delivery' ? toP.orderId : null
-        });
-      }
-  
-      res.render('deliveries/route_map', {
-        title: 'Optimized Delivery Route',
-        orders: originalOrdersWithCoords.map(o => o.orderDoc),
-        originWarehouse: originWarehouseForView,
-        routeLegs, // array of { startName, startAddress, endName, endAddress, startCoords, endCoords }
-        googleMapsApiKey: googleMapsApiKeyForView,
-        errorMsg,
-        layout: './layouts/dashboard_layout'
-      });
-  
-    } catch (err) {
-      console.error('Error in /deliveries/map:', err);
-      res.status(500).render('deliveries/route_map', {
-        title: 'Error Loading Route', orders: [], originWarehouse: null,
-        routeLegs: [], googleMapsApiKey: process.env.Maps_API_KEY,
-        errorMsg: `Server error: ${err.message}`,
-        layout: './layouts/dashboard_layout'
+    const routeLegs = [];
+    for (let k = 0; k < visitOrderIndices.length - 1; k++) {
+      const fromIdx = visitOrderIndices[k], toIdx = visitOrderIndices[k + 1];
+      const fromP = uniqueCoordsForOSRM[fromIdx], toP = uniqueCoordsForOSRM[toIdx];
+
+      // Find the matching order document
+      const orderDoc = toP.orderId
+        ? originalOrdersWithCoords.find(o => o.orderDoc._id.toString() === toP.orderId.toString())?.orderDoc
+        : null;
+
+      // Build items list
+      const itemsList = (orderDoc?.orderItems || []).map(oi => ({
+        name: oi.itemId?.name || 'Unknown',
+        quantity: oi.quantity
+      }));
+
+      routeLegs.push({
+        startName: fromP.name,
+        startAddress: fromP.address,
+        endName: toP.name,
+        endAddress: toP.address,
+        distance: distances[fromIdx][toIdx],
+        duration: durations[fromIdx][toIdx],
+        startCoords: { lat: fromP.lat, lng: fromP.lng },
+        endCoords:   { lat: toP.lat, lng: toP.lng },
+        orderId:     toP.type === 'delivery' ? toP.orderId : null,
+        items:       itemsList    // ← make sure this comma is here!
       });
     }
-  });
 
+    res.render('deliveries/route_map', {
+      title: 'Optimized Delivery Route',
+      routeLegs,
+      googleMapsApiKey: googleMapsApiKeyForView,
+      errorMsg,
+      layout: './layouts/dashboard_layout'
+    });
+
+  } catch (err) {
+    console.error('Error in /deliveries/map:', err);
+    res.status(500).render('deliveries/route_map', {
+      title: 'Error Loading Route',
+      routeLegs: [],
+      googleMapsApiKey: googleMapsApiKeyForView,
+      errorMsg: `Server error: ${err.message}`,
+      layout: './layouts/dashboard_layout'
+    });
+  }
+});
 async function updateStockForOrderItems(orderItems, warehouseId, operation, session) {
       const stockUpdates = [];
       for (const orderItem of orderItems) {

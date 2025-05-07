@@ -1,130 +1,133 @@
 <% locals.pageTitle = typeof title !== 'undefined' ? title : 'Optimized Delivery Route' %>
 
-<header class="py-3 px-6 border-b border-gray-200 bg-white shadow-sm flex-shrink-0 flex items-center justify-between">
-  <h2 class="text-lg font-semibold text-gray-800"><%= locals.pageTitle %></h2>
-  <div class="space-x-2">
-    <button id="recenter-btn" class="px-3 py-1.5 bg-green-600 text-white text-xs rounded-md hover:bg-green-700">
-      Recenter to Vehicle
+<header class="py-3 px-6 border-b border-gray-200 bg-white shadow-sm flex items-center justify-between">
+  <h2 class="text-xl font-semibold text-gray-800"><%= locals.pageTitle %></h2>
+  <div class="flex items-center space-x-2">
+    <button id="recenter-btn" class="flex items-center space-x-1 bg-green-600 hover:bg-green-700 text-white text-xs font-medium px-3 py-1.5 rounded">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+        <path d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11V5a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0V9h2a1 1 0 100-2h-2z" />
+      </svg>
+      <span>Recenter</span>
     </button>
-    <a href="/deliveries/my" class="inline-block px-3 py-1.5 border border-gray-300 text-xs font-medium text-gray-700 rounded-md hover:bg-gray-50">
-      Back to List
+    <a href="/deliveries/my" class="flex items-center space-x-1 border border-gray-300 hover:bg-gray-50 text-gray-700 text-xs font-medium px-3 py-1.5 rounded">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+      </svg>
+      <span>Back</span>
     </a>
   </div>
 </header>
 
 <% if (errorMsg) { %>
-  <div class="m-6 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative max-w-4xl mx-auto" role="alert">
-    <strong class="font-bold">Routing Error!</strong>
-    <span class="block sm:inline"><%= errorMsg %></span>
+  <div class="m-6 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded max-w-4xl mx-auto">
+    <strong class="font-bold">Error:</strong> <%= errorMsg %>
   </div>
 <% } %>
 
-<section class="p-6 flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-hidden">
-  <!-- Map Container -->
-  <div id="route-map" class="lg:col-span-2 h-[calc(100vh-150px)] border rounded-lg bg-gray-200 relative">
+<section class="p-6 flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <!-- Map -->
+  <div id="route-map" class="lg:col-span-2 h-[calc(100vh-150px)] border rounded-lg overflow-hidden relative">
     <div id="map-loader" class="absolute inset-0 bg-gray-200 bg-opacity-75 flex items-center justify-center z-10">
-      <!-- loader SVG -->
+      <svg class="animate-spin h-10 w-10 text-gray-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+      </svg>
     </div>
   </div>
 
-  <!-- Route Legs Sidebar -->
-  <div class="lg:col-span-1 h-[calc(100vh-150px)] overflow-y-auto bg-white border rounded-lg shadow-sm p-4 space-y-3">
-    <h3 class="text-base font-semibold text-gray-700 border-b pb-2 mb-3">Optimized Route Legs</h3>
-
+  <!-- Sidebar -->
+  <div class="lg:col-span-1 h-[calc(100vh-150px)] overflow-y-auto bg-white border rounded-lg shadow p-4">
+    <h3 class="text-lg font-semibold text-gray-700 mb-4">Route Stops</h3>
     <% if (routeLegs && routeLegs.length) { %>
-      <% routeLegs.forEach((leg, idx) => { %>
-        <div class="border p-3 rounded-md bg-gray-50">
-          <p class="text-xs text-gray-500">Distance: <%= (leg.distance/1000).toFixed(2) %> km | Duration: <%= Math.ceil(leg.duration/60) %> min</p>
-          <p class="font-semibold text-sm mt-1">From: <%- leg.startName %></p>
-          <p class="text-xs text-gray-600"><%- leg.startAddress %></p>
-          <p class="font-semibold text-sm mt-2">To: <%- leg.endName %></p>
-          <p class="text-xs text-gray-600"><%- leg.endAddress %></p>
-
-          <button
-            class="start-route-btn mt-3 w-full bg-blue-600 text-white py-1 rounded-md text-xs hover:bg-blue-700"
-            data-start='<%= JSON.stringify(leg.startCoords) %>'
-            data-end='<%= JSON.stringify(leg.endCoords) %>'
-          >
-            Start in Map
-          </button>
-        </div>
-      <% }) %>
+      <ul class="space-y-4">
+        <% routeLegs.forEach((leg, idx) => { %>
+          <li class="border rounded-lg p-3 bg-gray-50">
+            <div class="flex justify-between items-center">
+              <div>
+                <p class="text-sm font-medium">Stop <%= idx+1 %>: <%- leg.endName %></p>
+                <p class="text-xs text-gray-500"><%- leg.endAddress %></p>
+              </div>
+              <span class="text-xs text-gray-600"><%= (leg.distance/1000).toFixed(2) %> km</span>
+            </div>
+            <div class="mt-3 grid grid-cols-3 gap-2">
+              <button class="col-span-1 flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white text-xs py-1 rounded start-route-btn"
+                data-start='<%= JSON.stringify(leg.startCoords) %>' data-end='<%= JSON.stringify(leg.endCoords) %>'>
+                ▶️ Map
+              </button>
+              <% if (leg.orderId) { %>
+                <form method="POST" action="/deliveries/<%= leg.orderId %>/delivered" class="col-span-1">
+                  <button type="submit" class="w-full flex items-center justify-center bg-green-600 hover:bg-green-700 text-white text-xs py-1 rounded" onclick="return confirm('Mark delivered?');">
+                    ✓ Delivered
+                  </button>
+                </form>
+                <button class="col-span-1 flex items-center justify-center bg-gray-200 hover:bg-gray-300 text-gray-800 text-xs py-1 rounded"
+                  onclick='showOrderItems(<%- JSON.stringify(leg.items||[]) %> , "<%= leg.endName.replace(/"/g,'’') %>")'>
+                  📦 Items
+                </button>
+              <% } %>
+            </div>
+          </li>
+        <% }) %>
+      </ul>
     <% } else { %>
-      <p class="text-sm text-gray-500 text-center py-4">No route legs available.</p>
+      <p class="text-center text-gray-500">No stops available.</p>
     <% } %>
   </div>
 </section>
 
-<!-- Google Maps API -->
-<script src="https://maps.googleapis.com/maps/api/js?key=<%= googleMapsApiKey %>&libraries=geometry,marker&callback=initRouteMap" async defer></script>
+<!-- Items Modal -->
+<div id="items-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+  <div class="bg-white rounded-lg shadow-xl w-11/12 max-w-md p-6">
+    <div class="flex justify-between items-center mb-4">
+      <h4 id="items-modal-title" class="text-lg font-semibold">Items</h4>
+      <button id="items-modal-close" class="text-gray-600 hover:text-gray-900">✕</button>
+    </div>
+    <div id="items-modal-body" class="space-y-2 max-h-60 overflow-y-auto text-sm text-gray-700"></div>
+    <div class="mt-6 text-right">
+      <button id="items-modal-ok" class="px-4 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://maps.googleapis.com/maps/api/js?key=<%= googleMapsApiKey %>&libraries=geometry&callback=initRouteMap" async defer></script>
+
+<script>
+  // Modal logic
+  const modal = document.getElementById('items-modal');
+  const modalTitle = document.getElementById('items-modal-title');
+  const modalBody = document.getElementById('items-modal-body');
+  ['items-modal-close','items-modal-ok'].forEach(id=>{
+    document.getElementById(id).onclick=()=>modal.classList.add('hidden');
+  });
+  modal.addEventListener('click', e=>{ if(e.target===modal) modal.classList.add('hidden'); });
+  function showOrderItems(items, dest){
+    modalTitle.textContent = `Items @ ${dest}`;
+    modalBody.innerHTML = items.length
+      ? items.map(it=>`<p>• ${it.quantity} × ${it.name}</p>`).join('')
+      : '<p class="italic text-gray-500">No items</p>';
+    modal.classList.remove('hidden');
+  }
+</script>
 
 <script>
   let map, legPolyline, vehicleMarker, lastPos;
   const loader = document.getElementById('map-loader');
-  const recenterBtn = document.getElementById('recenter-btn');
+  document.getElementById('recenter-btn').onclick = ()=> lastPos && map.panTo(lastPos);
 
-  function initRouteMap() {
-    map = new google.maps.Map(document.getElementById('route-map'), {
-      center: { lat: 12.9716, lng: 77.5946 },
-      zoom: 12,
-      mapId: 'SWIFTROUTE_DELIVERY_MAP',
-      mapTypeControl: false,
-      fullscreenControl: false
-    });
-
-    loader.style.display = 'none';
-
-    // Custom vehicle icon
-    const vehicleIcon = {
-      url: '/images/vehicle-icon.png', // replace with your vehicle SVG/PNG
-      scaledSize: new google.maps.Size(40, 40),
-      anchor: new google.maps.Point(20, 20)
-    };
-
-    vehicleMarker = new google.maps.Marker({
-      map,
-      icon: vehicleIcon,
-      title: 'Your Vehicle'
-    });
-
-    if (navigator.geolocation) {
-      navigator.geolocation.watchPosition(pos => {
-        const { latitude, longitude } = pos.coords;
-        lastPos = { lat: latitude, lng: longitude };
-        vehicleMarker.setPosition(lastPos);
-      }, err => console.error('Geolocation error:', err), { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 });
-    } else alert('Geolocation not supported.');
-
-    recenterBtn.addEventListener('click', () => {
-      if (lastPos) map.panTo(lastPos);
-    });
-
-    document.querySelectorAll('.start-route-btn').forEach(btn => btn.addEventListener('click', () => loadLeg(btn)));
+  function initRouteMap(){
+    map = new google.maps.Map(document.getElementById('route-map'),{ center:{lat:12.9716,lng:77.5946},zoom:12, mapTypeControl:false,fullscreenControl:false });
+    loader.style.display='none';
+    vehicleMarker = new google.maps.Marker({ map, icon:{path:google.maps.SymbolPath.FORWARD_CLOSED_ARROW,scale:6,fillColor:'#F00',fillOpacity:1,strokeWeight:1,strokeColor:'#FFF'} });
+    navigator.geolocation.watchPosition(p=>{ lastPos={lat:p.coords.latitude,lng:p.coords.longitude}; vehicleMarker.setPosition(lastPos); },console.error,{enableHighAccuracy:true});
+    document.querySelectorAll('.start-route-btn').forEach(b=>b.onclick=()=>loadLeg(b));
   }
-
-  async function loadLeg(btn) {
-    if (legPolyline) legPolyline.setMap(null);
-    loader.style.display = 'flex';
-
-    const start = JSON.parse(btn.getAttribute('data-start'));
-    const end = JSON.parse(btn.getAttribute('data-end'));
-
-    try {
-      const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=polyline`);
-      const data = await res.json();
-      if (data.code !== 'Ok') throw new Error(data.message || data.code);
-
-      const path = google.maps.geometry.encoding.decodePath(data.routes[0].geometry);
-      legPolyline = new google.maps.Polyline({ path, map, strokeWeight: 6, strokeOpacity: 0.8 });
-
-      const bounds = new google.maps.LatLngBounds();
-      path.forEach(p => bounds.extend(p));
-      map.fitBounds(bounds);
-    } catch (e) {
-      console.error('Error fetching leg route:', e);
-      alert('Unable to load route.');
-    } finally {
-      loader.style.display = 'none';
-    }
+  async function loadLeg(btn){ if(legPolyline)legPolyline.setMap(null); loader.style.display='flex';
+    const s=JSON.parse(btn.dataset.start),e=JSON.parse(btn.dataset.end);
+    try{ const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${s.lng},${s.lat};${e.lng},${e.lat}?overview=full&geometries=polyline`);
+      const d=await r.json(); if(d.code!=='Ok')throw''; const path=google.maps.geometry.encoding.decodePath(d.routes[0].geometry);
+      legPolyline=new google.maps.Polyline({path,map,strokeWeight:6,strokeOpacity:0.8});
+      const bounds=new google.maps.LatLngBounds();path.forEach(pt=>bounds.extend(pt));map.fitBounds(bounds);
+    }catch(err){console.error(err);alert('Route load failed.');}
+    finally{loader.style.display='none';}
   }
 </script>
