@@ -1,22 +1,14 @@
 // routes/deliveries.js
 const express = require('express');
-const axios = require('axios');
+const axios = require('axios'); // For OSRM
 const mongoose = require('mongoose');
 const Order = require('../models/Order');
 const User = require('../models/User');
 const Store = require('../models/Store');
 const Item = require('../models/Item');
 const Warehouse = require('../models/Warehouse');
-const { RouteOptimizationClient } = require('@googlemaps/routeoptimization');
-
-// Import Google Maps Client
-const { Client, Status } = require("@googlemaps/google-maps-services-js");
-const googleMapsClient = new Client({});
-// *** USE ENV VARIABLE NAME FROM YOUR .env FILE ***
-const Maps_API_KEY_CONFIG = { key: process.env.Maps_API_KEY }; // Use Maps_API_KEY here
 
 const router = express.Router();
-const routingClient = new RouteOptimizationClient();
 
 // --- Local Auth Middleware ---
 function ensureAuthenticated(req, res, next) {
@@ -28,12 +20,12 @@ function ensureDeliveryPartner(req, res, next) {
     if (loggedInUser?.role === 'delivery_partner') return next();
     res.status(403).render('error_page', { title: "Access Denied", message: "Delivery Partner role required.", layout: './layouts/dashboard_layout'});
 }
+router.use(ensureAuthenticated, ensureDeliveryPartner);
 // --- End Local Auth Middleware ---
 
-router.use(ensureAuthenticated, ensureDeliveryPartner);
-
-// GET /deliveries/my - Show Aggregated Loading List and Individual Orders
+// GET /deliveries/my
 router.get('/my', async (req, res) => {
+    // Using the version from your prompt #70 that was working
     console.log("--- Accessing GET /deliveries/my ---");
     const loggedInUser = res.locals.loggedInUser;
     let originWarehouse = null;
@@ -43,7 +35,6 @@ router.get('/my', async (req, res) => {
     let showPickupButton = false;
 
     try {
-        // 1. Find all active orders assigned to driver
         const allAssignedOrders = await Order.find({
             assignedDeliveryPartnerId: loggedInUser._id,
             orderStatus: { $in: ['confirmed', 'shipped'] }
@@ -51,12 +42,10 @@ router.get('/my', async (req, res) => {
         .populate('warehouseId', 'name location address _id')
         .populate('storeId', 'storeName')
         .sort({ placedDate: 1 }).lean();
-        console.log(`Found ${allAssignedOrders.length} total active assigned orders.`);
-
+        
         if (allAssignedOrders.length > 0) {
-            // 2. Determine Origin & Check consistency
             originWarehouse = allAssignedOrders[0].warehouseId;
-            if (!originWarehouse?._id) { throw new Error("Cannot determine origin warehouse."); }
+            if (!originWarehouse?._id) { throw new Error("Cannot determine origin warehouse for deliveries."); }
             const originWarehouseId = originWarehouse._id;
             const allFromSameWarehouse = allAssignedOrders.every(order => {
                 const currentWarehouseId = order.warehouseId?._id;
@@ -64,54 +53,28 @@ router.get('/my', async (req, res) => {
                 return currentWarehouseId.toString() === originWarehouseId.toString();
             });
             if (!allFromSameWarehouse) { throw new Error("Deliveries assigned from multiple warehouses."); }
-            console.log(`All orders originate from warehouse: ${originWarehouse.name} (${originWarehouseId})`);
-
-            // Separate orders
+            
             ordersForPickup = allAssignedOrders.filter(o => o.orderStatus === 'confirmed');
             ordersInProgress = allAssignedOrders.filter(o => o.orderStatus === 'shipped');
             showPickupButton = ordersForPickup.length > 0;
-            console.log(`Orders for pickup: ${ordersForPickup.length}, Orders in progress: ${ordersInProgress.length}`); // Log counts
 
-             // *** Log the orders being aggregated ***
-             if (showPickupButton) {
-                 console.log("Orders used for aggregation:", JSON.stringify(ordersForPickup.map(o => ({_id: o._id, items: o.orderItems})), null, 2));
-             }
-
-            // 3. Aggregate Items
             if (showPickupButton) {
-                console.log("Aggregating items for pickup list...");
-                try {
-                    aggregatedItems = await Order.aggregate([
-                        { $match: { _id: { $in: ordersForPickup.map(o => o._id) } }}, // Match specific confirmed order IDs
-                        { $unwind: "$orderItems" },
-                        { $group: { _id: "$orderItems.itemId", totalQuantity: { $sum: "$orderItems.quantity" } } },
-                        { $lookup: { from: Item.collection.name, localField: "_id", foreignField: "_id", as: "itemDetails" }},
-                        { $unwind: { path: "$itemDetails", preserveNullAndEmptyArrays: true } },
-                        { $project: { _id: 0, itemId: "$_id", name: { $ifNull: [ "$itemDetails.name", "Unknown Item" ] }, sku: { $ifNull: [ "$itemDetails.sku", "N/A" ] }, neededQuantity: "$totalQuantity" }},
-                        { $sort: { name: 1 } }
-                    ]);
-                    console.log(`Aggregation complete. Found ${aggregatedItems.length} unique items.`);
-                    // Log if lookup failed for any items
-                    if (aggregatedItems.some(item => item.name === 'Unknown Item')) {
-                        console.warn("Warning: Some items in confirmed orders could not be found in the Item collection (check itemIds).");
-                    }
-                } catch (aggError) {
-                    console.error("Error during item aggregation:", aggError);
-                    throw aggError; // Re-throw
-                }
-            } else {
-                 console.log("No orders in 'confirmed' status, skipping item aggregation.");
+                aggregatedItems = await Order.aggregate([
+                    { $match: { _id: { $in: ordersForPickup.map(o => o._id) } } },
+                    { $unwind: "$orderItems" },
+                    { $group: { _id: "$orderItems.itemId", totalQuantity: { $sum: "$orderItems.quantity" } } },
+                    { $lookup: { from: "items", localField: "_id", foreignField: "_id", as: "itemDetails" }},
+                    { $unwind: { path: "$itemDetails", preserveNullAndEmptyArrays: true } },
+                    { $project: { _id: 0, itemId: "$_id", name: { $ifNull: [ "$itemDetails.name", "Unknown Item" ] }, sku: { $ifNull: [ "$itemDetails.sku", "N/A" ] }, neededQuantity: "$totalQuantity" }},
+                    { $sort: { name: 1 } }
+                ]);
             }
         }
-
-        console.log("Rendering deliveries/my_deliveries view...");
         res.render('deliveries/my_deliveries', {
             title: 'My Deliveries & Loading List', originWarehouse, aggregatedItems,
             ordersForPickup, ordersInProgress, showPickupButton,
             error: req.query.error, success_msg: req.query.success, layout: './layouts/dashboard_layout'
         });
-        console.log("Finished rendering deliveries/my_deliveries view.");
-
     } catch (err) {
         console.error(`Error in GET /deliveries/my for driver ${loggedInUser?._id}:`, err);
         res.status(500).render('error_page', { title: "Error", message: `Failed to load deliveries: ${err.message}`, layout: false });
@@ -120,156 +83,151 @@ router.get('/my', async (req, res) => {
 
 // GET /deliveries/map — OSRM + Nearest-Neighbor Optimization
 router.get('/map', async (req, res) => {
-  console.log('--- GET /deliveries/map (OSRM NN) ---');
-  const loggedInUser = res.locals.loggedInUser;
-  let finalOrdersToDisplay = [];
-  let originWarehouseForView = null;
-  let routePolylineFromOSRM = null;
-  let errorMsg = null;
-  const googleMapsApiKeyForView = process.env.Maps_API_KEY; // For frontend Google Map display
-
-  if (!googleMapsApiKeyForView) {
+    console.log('--- GET /deliveries/map (OSRM NN) ---');
+    const loggedInUser = res.locals.loggedInUser;
+    let errorMsg = null;
+    const googleMapsApiKeyForView = process.env.Maps_API_KEY;
+    if (!googleMapsApiKeyForView) {
       console.error("FATAL: Maps_API_KEY for frontend map display is missing!");
       errorMsg = "Mapping service API key not configured for map display.";
-  }
-
-  try {
+    }
+  
+    try {
       // 1) Fetch active orders
       const allAssignedOrders = await Order.find({
-          assignedDeliveryPartnerId: loggedInUser._id,
-          orderStatus: { $in: ['confirmed', 'shipped'] } // Primarily 'shipped' if pickup is done
+        assignedDeliveryPartnerId: loggedInUser._id,
+        orderStatus: { $in: ['confirmed', 'shipped'] }
       })
-      .populate('warehouseId', 'name location address') // Ensure location is populated
-      .populate('storeId', 'storeName address location') // Ensure location is populated
+      .populate('warehouseId', 'name location address')
+      .populate('storeId', 'storeName address location')
       .lean();
       console.log(`Found ${allAssignedOrders.length} assigned orders.`);
-
-      // 2) Build arrays for OSRM:
-      //    - originalOrdersWithCoords: stores order doc + delivery coords for re-linking later
-      //    - uniqueCoordsForOSRM: [{lng, lat}] for OSRM, warehouse first
+  
+      // 2) Build points arrays
       const originalOrdersWithCoords = [];
       const uniqueCoordsForOSRM = [];
-
+      let originWarehouseForView = null;
+  
       if (allAssignedOrders.length > 0) {
-          const firstWarehouse = allAssignedOrders[0].warehouseId;
-          if (firstWarehouse?.location?.coordinates?.length === 2) {
-              uniqueCoordsForOSRM.push({ lng: firstWarehouse.location.coordinates[0], lat: firstWarehouse.location.coordinates[1], type: 'warehouse', name: firstWarehouse.name });
-              originWarehouseForView = firstWarehouse; // For view display
-          } else {
-              throw new Error("Valid origin warehouse location is missing for the first order.");
-          }
-
-          allAssignedOrders.forEach(order => {
-              const deliveryLocation = order.shippingLocation?.coordinates?.length === 2 ? order.shippingLocation.coordinates : order.storeId?.location?.coordinates;
-              if (deliveryLocation?.length === 2) {
-                  originalOrdersWithCoords.push({ orderDoc: order, deliveryLng: deliveryLocation[0], deliveryLat: deliveryLocation[1] });
-                  uniqueCoordsForOSRM.push({ lng: deliveryLocation[0], lat: deliveryLocation[1], type: 'delivery', orderId: order._id, name: order.customerName || order.storeId?.storeName });
-              } else {
-                  console.warn(`Order ${order._id} skipped due to missing valid delivery coordinates.`);
-              }
+        const w = allAssignedOrders[0].warehouseId;
+        if (w?.location?.coordinates?.length === 2) {
+          uniqueCoordsForOSRM.push({
+            lng: w.location.coordinates[0],
+            lat: w.location.coordinates[1],
+            type: 'warehouse',
+            name: w.name,
+            address: w.address
           });
+          originWarehouseForView = w;
+        } else {
+          throw new Error("Valid origin warehouse location is missing.");
+        }
+  
+        allAssignedOrders.forEach(order => {
+          const coords = order.shippingLocation?.coordinates?.length === 2
+            ? order.shippingLocation.coordinates
+            : order.storeId?.location?.coordinates;
+          if (coords?.length === 2) {
+            originalOrdersWithCoords.push({ orderDoc: order, deliveryLng: coords[0], deliveryLat: coords[1] });
+            uniqueCoordsForOSRM.push({
+              lng: coords[0],
+              lat: coords[1],
+              type: 'delivery',
+              orderId: order._id,
+              name: order.customerName || order.storeId?.storeName,
+              address: order.storeId?.address || order.shippingAddress
+            });
+          } else {
+            console.warn(`Order ${order._id} skipped due to missing coords.`);
+          }
+        });
       }
-      console.log(`Prepared ${originalOrdersWithCoords.length} orders for routing. Unique OSRM points: ${uniqueCoordsForOSRM.length}`);
-
-      if (originalOrdersWithCoords.length === 0) { // No orders with valid coords to route
-          errorMsg = errorMsg || 'No valid delivery locations found to route.';
-          // Render with empty orders but provide API key for empty map
-          return res.render('deliveries/route_map', { title: 'Delivery Route', orders: [], originWarehouse: originWarehouseForView, routePolyline: null, googleMapsApiKey: googleMapsApiKeyForView, errorMsg, layout: './layouts/dashboard_layout' });
+  
+      if (originalOrdersWithCoords.length === 0) {
+        return res.render('deliveries/route_map', {
+          title: 'Delivery Route', orders: [], originWarehouse: originWarehouseForView,
+          routePolyline: null, routeLegs: [],
+          googleMapsApiKey: googleMapsApiKeyForView,
+          errorMsg, layout: './layouts/dashboard_layout'
+        });
       }
-
+  
       // 3) OSRM Table API
       const coordList = uniqueCoordsForOSRM.map(c => `${c.lng},${c.lat}`).join(';');
-      const tableUrl = `http://router.project-osrm.org/table/v1/driving/${coordList}?annotations=distance,duration`;
-      console.log("Requesting OSRM Table:", tableUrl);
-      const tableRes = await axios.get(tableUrl);
-
-      if (tableRes.data.code !== 'Ok') {
-          throw new Error(`OSRM Table API error: ${tableRes.data.message || tableRes.data.code}`);
-      }
+      const tableRes = await axios.get(`http://router.project-osrm.org/table/v1/driving/${coordList}?annotations=distance,duration`);
+      if (tableRes.data.code !== 'Ok') throw new Error(tableRes.data.message || tableRes.data.code);
       const { distances, durations } = tableRes.data;
-      console.log(`OSRM Table API success. Distances matrix size: ${distances?.length}`);
-
-      // 4) Nearest-Neighbor TSP
-      const N = uniqueCoordsForOSRM.length; // Number of points including warehouse
-      const visited = Array(N).fill(false);
-      const visitOrderIndices = [0]; // Start at warehouse (index 0 in uniqueCoordsForOSRM)
-      visited[0] = true;
-      let currentPointIndex = 0; // Current point's index in uniqueCoordsForOSRM
-
-      for (let i = 0; i < originalOrdersWithCoords.length; i++) { // We need to visit N-1 delivery points
-          let nextPointIndex = -1;
-          let bestCost = Infinity;
-          for (let j = 1; j < N; j++) { // Iterate through potential next stops (excluding warehouse as next stop unless it's the end)
-              if (!visited[j]) {
-                  const cost = (distances[currentPointIndex][j] || Infinity) + (durations[currentPointIndex][j] || Infinity); // Simple cost
-                  if (cost < bestCost) {
-                      bestCost = cost;
-                      nextPointIndex = j;
-                  }
-              }
-          }
-          if (nextPointIndex !== -1) {
-              visited[nextPointIndex] = true;
-              visitOrderIndices.push(nextPointIndex);
-              currentPointIndex = nextPointIndex;
-          } else {
-              console.warn("Nearest neighbor could not find next unvisited point. Breaking.");
-              break; // Should not happen if all points are connectable
-          }
-      }
-      visitOrderIndices.push(0); // Return to warehouse
-      console.log("Nearest Neighbor visitOrderIndices (indices from uniqueCoordsForOSRM):", visitOrderIndices);
-
-      // 5) OSRM Route API for the optimized sequence
-      const reorderedCoordsForRouteAPI = visitOrderIndices.map(i => `${uniqueCoordsForOSRM[i].lng},${uniqueCoordsForOSRM[i].lat}`).join(';');
-      const routeUrl = `http://router.project-osrm.org/route/v1/driving/${reorderedCoordsForRouteAPI}?overview=full&geometries=polyline`;
-      console.log("Requesting OSRM Route:", routeUrl);
-      const routeRes = await axios.get(routeUrl);
-
-      if (routeRes.data.code !== 'Ok') {
-          throw new Error(`OSRM Route API error: ${routeRes.data.message || routeRes.data.code}`);
-      }
-      routePolylineFromOSRM = routeRes.data.routes?.[0]?.geometry || null;
-      console.log(`OSRM Route API success. Polyline received: ${!!routePolylineFromOSRM}`);
-
-      // 6) Map back to original order documents in the optimized sequence
-      // visitOrderIndices contains indices of uniqueCoordsForOSRM.
-      // The first and last are the warehouse. The ones in between are delivery points.
-      finalOrdersToDisplay = visitOrderIndices.slice(1, -1).map(uniqueCoordIndex => {
-          // Find the original order that corresponds to this uniqueCoord point
-          const coordPoint = uniqueCoordsForOSRM[uniqueCoordIndex];
-          const originalOrderData = originalOrdersWithCoords.find(o => o.orderDoc._id.toString() === coordPoint.orderId?.toString());
-          return originalOrderData ? originalOrderData.orderDoc : null;
-      }).filter(Boolean); // Remove any nulls if mapping failed
-
-      console.log(`Final ordered stops for display: ${finalOrdersToDisplay.length}`);
-
-      // 7) Render view
-      res.render('deliveries/route_map', {
-          title: 'Optimized Delivery Route (OSRM)',
-          orders: finalOrdersToDisplay, // These are now sorted by OSRM/NN
-          originWarehouse: originWarehouseForView,
-          routePolyline: routePolylineFromOSRM,
-          googleMapsApiKey: googleApiKeyForView, // For frontend map
-          errorMsg: errorMsg,
-          layout: './layouts/dashboard_layout'
-      });
-
-  } catch (err) {
-      console.error('Error in /deliveries/map (OSRM NN):', err);
-      res.status(500).render('deliveries/route_map', {
-          title: 'Error Loading Route', orders: [], originWarehouse: null, routePolyline: null,
-          googleMapsApiKey: googleApiKeyForView,
-          errorMsg: `Server error: ${err.message}`,
-          layout: './layouts/dashboard_layout'
-      });
-  }
-});
-
   
-    // --- Status Update Routes ---
+      // 4) Nearest-Neighbor TSP
+      const N = uniqueCoordsForOSRM.length;
+      const visited = Array(N).fill(false);
+      const visitOrderIndices = [0]; visited[0] = true;
+      let current = 0;
+      for (let i = 0; i < originalOrdersWithCoords.length; i++) {
+        let next = -1, best = Infinity;
+        for (let j = 1; j < N; j++) {
+          if (!visited[j]) {
+            const cost = (distances[current][j] || Infinity) + (durations[current][j] || Infinity);
+            if (cost < best) { best = cost; next = j; }
+          }
+        }
+        if (next === -1) break;
+        visited[next] = true;
+        visitOrderIndices.push(next);
+        current = next;
+      }
+      visitOrderIndices.push(0);
+      console.log(`Visit sequence: ${visitOrderIndices}`);
+  
+      // 5) OSRM Route API for full polyline
+      const routeCoords = visitOrderIndices.map(i => `${uniqueCoordsForOSRM[i].lng},${uniqueCoordsForOSRM[i].lat}`).join(';');
+      const routeRes = await axios.get(`http://router.project-osrm.org/route/v1/driving/${routeCoords}?overview=full&geometries=polyline`);
+      if (routeRes.data.code !== 'Ok') throw new Error(routeRes.data.message || routeRes.data.code);
+      const fullPolyline = routeRes.data.routes[0].geometry;
+  
+      // 6) Build routeLegs
+      const routeLegs = [];
+      for (let k = 0; k < visitOrderIndices.length - 1; k++) {
+        const fromIdx = visitOrderIndices[k], toIdx = visitOrderIndices[k + 1];
+        const fromP = uniqueCoordsForOSRM[fromIdx], toP = uniqueCoordsForOSRM[toIdx];
+        routeLegs.push({
+          startName: fromP.name,
+          startAddress: fromP.address,
+          endName: toP.name,
+          endAddress: toP.address,
+          distance: distances[fromIdx][toIdx],
+          duration: durations[fromIdx][toIdx],
+          startCoords: { lat: fromP.lat, lng: fromP.lng },
+          endCoords: { lat: toP.lat, lng: toP.lng },
+          orderId: toP.type === 'delivery' ? toP.orderId : null
+        });
+      }
+  
+      // 7) Render view with legs
+      res.render('deliveries/route_map', {
+        title: 'Optimized Delivery Route (OSRM)',
+        orders: originalOrdersWithCoords.map(o => o.orderDoc),
+        originWarehouse: originWarehouseForView,
+        routePolyline: fullPolyline,
+        routeLegs,
+        googleMapsApiKey: googleMapsApiKeyForView,
+        errorMsg,
+        layout: './layouts/dashboard_layout'
+      });
+  
+    } catch (err) {
+      console.error('Error in /deliveries/map:', err);
+      res.status(500).render('deliveries/route_map', {
+        title: 'Error Loading Route', orders: [], originWarehouse: null,
+        routePolyline: null, routeLegs: [],
+        googleMapsApiKey: process.env.Maps_API_KEY,
+        errorMsg: `Server error: ${err.message}`,
+        layout: './layouts/dashboard_layout'
+      });
+    }
+  });
 
-    async function updateStockForOrderItems(orderItems, warehouseId, operation, session) {
+async function updateStockForOrderItems(orderItems, warehouseId, operation, session) {
       const stockUpdates = [];
       for (const orderItem of orderItems) {
           const itemDoc = orderItem.itemId;

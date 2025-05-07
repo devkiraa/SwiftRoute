@@ -18,71 +18,79 @@
         <span class="block sm:inline"><%= errorMsg %></span>
     </div>
 <% } %>
-
 <section class="p-6 flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-hidden">
-
-     <%# Map Area %>
-     <div class="lg:col-span-2 h-[calc(100vh-150px)]">
-        <div id="route-map" class="w-full h-full border rounded-lg bg-gray-200 text-gray-500 flex items-center justify-center relative">
-             <%# Loading Indicator %>
-             <div id="map-loader" class="absolute inset-0 bg-gray-200 bg-opacity-75 flex items-center justify-center z-10">
-                 <svg class="animate-spin h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                 <span class="ml-3">Loading Map & Route...</span>
-             </div>
-        </div>
-     </div>
-
-    <%# Delivery List / Route Steps Area - NOW DISPLAYS LEGS %>
-    <div class="lg:col-span-1 h-[calc(100vh-150px)] overflow-y-auto bg-white border rounded-lg shadow-sm p-4 space-y-3">
-         <h3 class="text-base font-semibold text-gray-700 border-b pb-2 mb-3">Optimized Route Legs</h3>
-          <%# Use the 'routeLegs' array passed from the backend %>
-          <% if (typeof routeLegs !== 'undefined' && routeLegs && routeLegs.length > 0) { %>
-                <% routeLegs.forEach((leg, index) => { %>
-                    <div class="border p-3 rounded-md bg-gray-50">
-                        <div class="flex items-start space-x-3">
-                             <span class="inline-block flex-shrink-0 bg-blue-600 text-white rounded-full w-6 h-6 text-sm text-center leading-6 font-medium mt-0.5"><%= index + 1 %></span>
-                             <div class="flex-1">
-                                 <p class="font-semibold text-sm text-gray-900 mb-0.5">
-                                     From: <%= leg.startName %>
-                                 </p>
-                                 <p class="text-xs text-gray-600 mb-1"><%= leg.startAddress %></p>
-                                 <p class="font-semibold text-sm text-gray-900 mb-0.5 mt-2 border-t pt-2">
-                                     To: <%= leg.endName %>
-                                 </p>
-                                 <p class="text-xs text-gray-700 leading-tight"><%= leg.endAddress %></p>
-                                 <p class="text-xs text-gray-500 mt-1">
-                                     Distance: <%= leg.distance || 'N/A' %> | Duration: <%= leg.duration || 'N/A' %>
-                                 </p>
-                                 <%# Add link to order details if this leg corresponds to an order %>
-                                 <% if (leg.orderId) { %>
-                                    <div class="mt-2 flex items-center space-x-3">
-                                        <a href="/orders/<%= leg.orderId %>" class="text-blue-600 hover:underline text-xs">View Order Details</a>
-                                        <%# Find the order to display action buttons %>
-                                        <% const legOrder = orders.find(o => o._id.toString() === leg.orderId.toString()); %>
-                                        <% if (legOrder) { %>
-                                             <% if(legOrder.orderStatus === 'confirmed') { %> <form action="/deliveries/<%= legOrder._id %>/pickup" method="POST" class="inline" onsubmit="..."> <button type="submit" class="text-orange-600 ...">Mark Picked Up</button> </form> <% } else if (legOrder.orderStatus === 'shipped') { %> <form action="/deliveries/<%= legOrder._id %>/delivered" method="POST" class="inline" onsubmit="..."> <button type="submit" class="text-green-600 ...">Mark Delivered</button> </form> <% } %>
-                                        <% } %>
-                                    </div>
-                                 <% } %>
-                             </div>
-                         </div>
-                    </div>
-                <% }) %>
-          <% } else if (typeof orders !== 'undefined' && orders && orders.length > 0) { %>
-                <p class="text-sm text-gray-500 text-center py-4">Could not calculate route legs. Displaying stops:</p>
-                <%# Fallback: Show original orders list if legs fail but orders exist %>
-                 <% orders.forEach((order, index) => { %>
-                    <div class="border p-3 rounded-md bg-gray-100"> <%# Different bg %>
-                        <p class="font-medium text-sm text-gray-800 mb-1">Stop <%= index + 1 %>: <%= order.customerName || order.storeId?.storeName %></p>
-                        <p class="text-xs text-gray-600"><%= order.shippingAddress %></p>
-                    </div>
-                 <% }) %>
-          <% } else { %>
-                <p class="text-sm text-gray-500 text-center py-4">No deliveries assigned or valid for routing.</p>
-          <% } %>
+  <div class="lg:col-span-2 h-[calc(100vh-150px)]">
+    <div id="route-map" class="w-full h-full border rounded-lg bg-gray-200 flex items-center justify-center relative">
+      <div id="map-loader" class="absolute inset-0 bg-gray-200 bg-opacity-75 flex items-center justify-center z-10">
+        <!-- loader SVG -->
+      </div>
     </div>
+  </div>
+
+  <div class="lg:col-span-1 h-[calc(100vh-150px)] overflow-y-auto bg-white border rounded-lg shadow-sm p-4 space-y-3">
+    <h3 class="text-base font-semibold text-gray-700 border-b pb-2 mb-3">Optimized Route Legs</h3>
+
+    <% if (routeLegs && routeLegs.length) { %>
+      <% routeLegs.forEach((leg, idx) => { %>
+        <div class="border p-3 rounded-md bg-gray-50">
+          <p class="text-xs text-gray-500">Distance: <%= (leg.distance/1000).toFixed(2) %> km | Duration: <%= Math.ceil(leg.duration/60) %> min</p>
+          <p class="font-semibold text-sm mt-1">From: <%- leg.startName %></p>
+          <p class="text-xs text-gray-600"><%- leg.startAddress %></p>
+          <p class="font-semibold text-sm mt-2">To: <%- leg.endName %></p>
+          <p class="text-xs text-gray-600"><%- leg.endAddress %></p>
+
+          <button
+            class="start-route-btn mt-3 text-blue-600 hover:underline text-xs"
+            data-start='<%= JSON.stringify(leg.startCoords) %>'
+            data-end='<%= JSON.stringify(leg.endCoords) %>'
+          >Start</button>
+        </div>
+      <% }) %>
+    <% } else { %>
+      <p class="text-sm text-gray-500 text-center py-4">No route legs available.</p>
+    <% } %>
+  </div>
 </section>
 
+<script src="https://maps.googleapis.com/maps/api/js?key=<%= googleMapsApiKey %>&libraries=geometry,marker&callback=initRouteMap" async defer></script>
+
+<script>
+  let map, legPolyline;
+  const loader = document.getElementById('map-loader');
+
+  function initRouteMap() {
+    // existing map init logic to draw full routePolyline...
+    // then attach handlers:
+    document.querySelectorAll('.start-route-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (legPolyline) legPolyline.setMap(null);
+        loader.style.display = 'flex';
+        const start = JSON.parse(btn.getAttribute('data-start'));
+        const end = JSON.parse(btn.getAttribute('data-end'));
+        try {
+          const res = await fetch(
+            `http://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=polyline`
+          );
+          const data = await res.json();
+          if (data.code !== 'Ok') throw new Error(data.message || data.code);
+          const geom = data.routes[0].geometry;
+          const path = google.maps.geometry.encoding.decodePath(geom);
+          legPolyline = new google.maps.Polyline({
+            path, map, strokeWeight: 6, strokeOpacity: 0.8
+          });
+          // adjust viewport
+          const bounds = new google.maps.LatLngBounds();
+          path.forEach(p => bounds.extend(p));
+          map.fitBounds(bounds);
+        } catch (e) {
+          console.error('Error fetching leg route:', e);
+        } finally {
+          loader.style.display = 'none';
+        }
+      });
+    });
+  }
+</script>
 <script src="https://maps.googleapis.com/maps/api/js?key=<%= typeof googleMapsApiKey !== 'undefined' ? googleMapsApiKey : '' %>&libraries=geometry,marker&callback=initRouteMap" async defer></script>
 
 <script>
