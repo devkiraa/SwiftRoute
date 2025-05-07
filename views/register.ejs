@@ -1,247 +1,120 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Register Company - SwiftRoute</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"/>
-    <style>
-        body { font-family: 'Inter', sans-serif; }
-        .bg-register-image { /* ... keep image styles ... */ }
-        .form-step { transition: opacity 0.3s ease-in-out, max-height 0.3s ease-in-out; overflow: hidden; }
-        .form-step.hidden { opacity: 0; max-height: 0; pointer-events: none; } /* Added pointer-events */
-        .form-step:not(.hidden) { opacity: 1; max-height: 1000px; /* Adjust if needed */ }
-    </style>
-</head>
-<body class="min-h-screen">
+<% locals.pageTitle = typeof title !== 'undefined' ? title : 'Reports' %>
 
-<div class="flex min-h-screen">
-
-    <div class="hidden lg:block lg:w-3/4 bg-register-image"></div>
-
-    <div class="w-full lg:w-1/4 bg-white flex flex-col items-center justify-center p-6 md:p-10 overflow-y-auto"> <%# Added overflow-y %>
-        <div class="w-full max-w-md">
-
-            <div class="text-center mb-6">
-                 <a href="/" class="text-3xl font-bold tracking-tight text-blue-600">SwiftRoute</a>
-                 <p id="form-title" class="mt-2 text-sm text-gray-600">Step 1: Company Information</p>
-            </div>
-
-            <% if (typeof error === 'string' && error) { %>
-                 <div class="mb-4 bg-red-100 border-l-4 border-red-500 text-red-700 p-4" role="alert">
-                     <p><%= error %></p>
-                 </div>
-             <% } %>
-
-            <form action="/register" method="POST" id="register-form" class="space-y-4">
-
-                <div id="step-1" class="form-step space-y-4">
-                     <fieldset class="border p-4 rounded space-y-3">
-                         <legend class="text-sm font-semibold px-1 text-gray-600">Basic Info</legend>
-                         <div>
-                            <label class="block text-xs font-semibold text-gray-700 mb-1" for="companyName">Company Name <span class="text-red-500">*</span></label>
-                            <input type="text" id="companyName" name="companyName" placeholder="Your Registered Company Name" required class="w-full px-4 py-2 border ..."/>
-                         </div>
-                         <div>
-                            <label class="block text-xs font-semibold text-gray-700 mb-1" for="contactEmail">Contact Email <span class="text-red-500">*</span></label>
-                            <input type="email" id="contactEmail" name="contactEmail" placeholder="contact@yourcompany.com" required class="w-full px-4 py-2 border ..."/>
-                         </div>
-                         <div>
-                            <label class="block text-xs font-semibold text-gray-700 mb-1" for="mobileNumber">Mobile Number</label>
-                            <input type="tel" id="mobileNumber" name="mobileNumber" placeholder="+91 XXXXX XXXXX" class="w-full px-4 py-2 border ..."/>
-                         </div>
-                          <div>
-                            <label class="block text-xs font-semibold text-gray-700 mb-1" for="gstin">GSTIN (Optional)</label>
-                            <input type="text" id="gstin" name="gstin" placeholder="e.g., 22AAAAA0000A1Z5" class="w-full px-4 py-2 border uppercase ..."/>
-                         </div>
-                     </fieldset>
-
-                     <fieldset class="border p-4 rounded space-y-3">
-                         <legend class="text-sm font-semibold px-1 text-gray-600">Main Address</legend>
-                         <div>
-                            <label class="block text-xs font-semibold text-gray-700 mb-1" for="address_street">Street Address</label>
-                            <input type="text" id="address_street" name="address_street" required class="w-full px-4 py-2 border ..."/>
-                         </div>
-                         <div class="grid grid-cols-2 gap-4">
-                             <div>
-                                <label class="block text-xs font-semibold text-gray-700 mb-1" for="address_city">City</label>
-                                <input type="text" id="address_city" name="address_city" required class="w-full px-4 py-2 border ..."/>
-                             </div>
-                             <div>
-                                <label class="block text-xs font-semibold text-gray-700 mb-1" for="address_state">State</label>
-                                <input type="text" id="address_state" name="address_state" required class="w-full px-4 py-2 border ..."/>
-                             </div>
-                         </div>
-                         <div class="grid grid-cols-2 gap-4">
-                             <div>
-                                <label class="block text-xs font-semibold text-gray-700 mb-1" for="address_pincode">Pincode</label>
-                                <input type="text" id="address_pincode" name="address_pincode" required class="w-full px-4 py-2 border ..."/>
-                             </div>
-                             <div>
-                                <label class="block text-xs font-semibold text-gray-700 mb-1" for="address_country">Country</label>
-                                <input type="text" id="address_country" name="address_country" value="India" required class="w-full px-4 py-2 border ..."/>
-                             </div>
-                         </div>
-                     </fieldset>
-
-                     <fieldset class="border p-4 rounded space-y-3">
-                         <legend class="text-sm font-semibold px-1 text-gray-600">Billing Address</legend>
-                          <div class="relative flex items-start mb-2">
-                             <div class="flex items-center h-5">
-                                <input id="sameAsMain" name="sameAsMain" type="checkbox" checked class="focus:ring-blue-500 h-4 w-4 text-blue-600 border-gray-300 rounded">
-                             </div>
-                             <div class="ml-3 text-sm">
-                                <label for="sameAsMain" class="font-medium text-gray-700">Same as main address</label>
-                             </div>
-                         </div>
-                         <div id="billingAddressFields" class="hidden space-y-3"> <%# Hidden if checkbox checked %>
-                             <div>
-                                <label class="block text-xs font-semibold text-gray-700 mb-1" for="billing_street">Street Address</label>
-                                <input type="text" id="billing_street" name="billing_street" class="w-full px-4 py-2 border ..."/>
-                             </div>
-                             <div class="grid grid-cols-2 gap-4">
-                                <div><label class="block text-xs ..." for="billing_city">City</label><input type="text" id="billing_city" name="billing_city" class="w-full ..."/></div>
-                                <div><label class="block text-xs ..." for="billing_state">State</label><input type="text" id="billing_state" name="billing_state" class="w-full ..."/></div>
-                             </div>
-                             <div class="grid grid-cols-2 gap-4">
-                                <div><label class="block text-xs ..." for="billing_pincode">Pincode</label><input type="text" id="billing_pincode" name="billing_pincode" class="w-full ..."/></div>
-                                <div><label class="block text-xs ..." for="billing_country">Country</label><input type="text" id="billing_country" name="billing_country" value="India" class="w-full ..."/></div>
-                             </div>
-                         </div>
-                     </fieldset>
-
-                     <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-1" for="subscriptionPlan">Subscription Plan</label>
-                        <select id="subscriptionPlan" name="subscriptionPlan" class="w-full px-4 py-2 border ...">
-                            <option value="basic" selected>Basic</option>
-                            <option value="premium">Premium</option>
-                            <option value="enterprise">Enterprise</option>
-                        </select>
-                     </div>
-                     <button type="button" id="next-button" class="w-full bg-blue-600 ..."> Next: Create Owner Account </button>
-                </div>
-
-                 <div id="step-2" class="form-step hidden space-y-5">
-                     <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-1" for="username">Your Username <span class="text-red-500">*</span></label>
-                        <input type="text" id="username" name="username" placeholder="Choose a username" required class="w-full px-4 py-2.5 border ..."/>
-                     </div>
-                     <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-1" for="password">Your Password <span class="text-red-500">*</span></label>
-                        <input type="password" id="password" name="password" placeholder="•••••••• (min 6 chars)" required minlength="6" class="w-full px-4 py-2.5 border ..."/>
-                     </div>
-                     <div class="flex justify-between items-center">
-                         <button type="button" id="prev-button" class="px-4 py-2 border ..."> Previous </button>
-                         <button type="submit" class="px-6 py-3 bg-green-600 ..."> Complete Registration </button>
-                     </div>
-                </div>
-            </form>
-
-            <p class="mt-6 text-center text-gray-600 text-sm"> Already have an account? <a href="/login" class="text-blue-600 ...">Login here</a>. </p>
+<header class="py-3 px-6 border-b border-gray-200 bg-white shadow-sm flex-shrink-0">
+    <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold text-gray-800"><%= locals.pageTitle %></h2>
+        <div>
+            <% if (['warehouse_owner', 'admin', 'store_owner', 'employee'].includes(locals.loggedInUser.role)) { %>
+                <a href="/reporting/sales-summary/csv"
+                   class="inline-flex items-center px-3 py-1.5 border border-green-600 text-xs font-medium rounded-md text-green-700 bg-green-50 hover:bg-green-100">
+                    <svg class="-ml-0.5 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd" /></svg>
+                    Download Sales CSV
+                </a>
+            <% } %>
         </div>
     </div>
-</div>
+</header>
 
+<section class="p-6 flex-1 overflow-y-auto space-y-6">
+    <% if (reportData && reportData.error) { %>
+        <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+            <strong class="font-bold">Report Error!</strong> <span class="block sm:inline"><%= reportData.error %></span>
+        </div>
+    <% } %>
+
+    <% if (reportData && !reportData.error) { %>
+
+        <%# --- Warehouse Owner / Admin Reports --- %>
+        <% if (['warehouse_owner', 'admin'].includes(reportData.type)) { %>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div class="bg-white border rounded-lg shadow-sm p-4">
+                    <h3 class="text-base font-semibold text-gray-700 mb-3">Sales & Profit Summary</h3>
+                    <dl class="space-y-2">
+                        <div> <dt class="text-sm font-medium text-gray-500">Total Revenue (Delivered)</dt> <dd class="mt-1 text-xl font-semibold text-gray-900">₹<%= reportData.salesSummary?.totalRevenue?.toFixed(2) || '0.00' %></dd> </div>
+                        <div> <dt class="text-sm font-medium text-gray-500">Total Cost of Goods Sold (COGS)</dt> <dd class="mt-1 text-xl font-semibold text-gray-900">₹<%= reportData.pnlSummary?.totalCOGS?.toFixed(2) || '0.00' %></dd> </div>
+                        <div> <dt class="text-sm font-medium text-green-600">Gross Profit</dt> <dd class="mt-1 text-xl font-semibold text-green-700">₹<%= reportData.pnlSummary?.grossProfit?.toFixed(2) || '0.00' %></dd> </div>
+                    </dl>
+                </div>
+
+                <div class="bg-white border rounded-lg shadow-sm p-4">
+                    <h3 class="text-base font-semibold text-gray-700 mb-3">Orders by Status</h3>
+                    <% if (reportData.orderStatusCounts && reportData.orderStatusCounts.length > 0) { %>
+                         <ul class="space-y-2"> <% reportData.orderStatusCounts.forEach(status => { %> <li class="flex justify-between text-sm"> <span class="capitalize font-medium text-gray-600"><%= status._id %>:</span> <span class="font-semibold text-gray-800"><%= status.count %></span> </li> <% }) %> </ul>
+                    <% } else { %> <p class="text-sm text-gray-500">No order data.</p> <% } %>
+                </div>
+
+                <div class="bg-white border rounded-lg shadow-sm p-4">
+                    <h3 class="text-base font-semibold text-gray-700 mb-3">Inventory Summary</h3>
+                    <% if (reportData.inventorySummary) { %>
+                        <dl class="space-y-2">
+                             <div> <dt class="text-sm font-medium text-gray-500">Total Stock Quantity</dt> <dd class="mt-1 text-xl font-semibold text-gray-900"><%= reportData.inventorySummary.totalItems %></dd> </div>
+                             <div> <dt class="text-sm font-medium text-gray-500">Distinct SKUs</dt> <dd class="mt-1 text-xl font-semibold text-gray-900"><%= reportData.inventorySummary.distinctSKUs %></dd> </div>
+                             <div> <dt class="text-sm font-medium text-gray-500">Total Inventory Value (at Cost)</dt> <dd class="mt-1 text-xl font-semibold text-gray-900">₹<%= reportData.inventorySummary.totalCostValue?.toFixed(2) || '0.00' %></dd> </div>
+                        </dl>
+                    <% } else { %> <p class="text-sm text-gray-500">No inventory data.</p> <% } %>
+                </div>
+            </div>
+            <%# TODO: Add more detailed tables below, like Top Selling Items, Low Stock Items, etc. %>
+        <% } %>
+
+        <%# --- Store Owner / Employee Reports (Keep as is or enhance) --- %>
+        <% if (['store_owner', 'employee', 'warehouse_owner'].includes(reportData.type)) { %>
+             <% } %>
+
+        <%# --- Delivery Partner Reports (Keep as is or enhance) --- %>
+        <% if (reportData.type === 'delivery_partner') { %>
+            <% } %>
+
+    <% } else { %>
+        <div class="bg-white border rounded-lg shadow-sm p-6 text-center">
+             <p class="text-gray-600">Could not load report data or no data available for your role.</p>
+        </div>
+    <% } %>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-    const step1 = document.getElementById('step-1');
-    const step2 = document.getElementById('step-2');
-    const nextButton = document.getElementById('next-button');
-    const prevButton = document.getElementById('prev-button');
-    const formTitle = document.getElementById('form-title');
-    const sameAsMainCheckbox = document.getElementById('sameAsMain');
-    const billingAddressFields = document.getElementById('billingAddressFields');
-
-    // --- Form Inputs for Step 1 Validation ---
-    const companyNameInput = document.getElementById('companyName');
-    const contactEmailInput = document.getElementById('contactEmail');
-    const addressStreetInput = document.getElementById('address_street');
-    const addressCityInput = document.getElementById('address_city');
-    const addressStateInput = document.getElementById('address_state');
-    const addressPincodeInput = document.getElementById('address_pincode');
-    const addressCountryInput = document.getElementById('address_country');
-    // Billing address inputs (only needed if checkbox unchecked)
-    const billingStreetInput = document.getElementById('billing_street');
-    const billingCityInput = document.getElementById('billing_city');
-    const billingStateInput = document.getElementById('billing_state');
-    const billingPincodeInput = document.getElementById('billing_pincode');
-    const billingCountryInput = document.getElementById('billing_country');
-
-    function validateStep1() {
-        let isValid = true;
-        // Simple presence check - add more specific validation (regex, etc.) as needed
-        [companyNameInput, contactEmailInput, addressStreetInput, addressCityInput, addressStateInput, addressPincodeInput, addressCountryInput].forEach(input => {
-            input.classList.remove('border-red-500'); // Reset error state
-            if (!input.value.trim()) {
-                input.classList.add('border-red-500');
-                isValid = false;
-            }
-        });
-        // Check billing address fields ONLY if the checkbox is NOT checked
-        if (!sameAsMainCheckbox.checked) {
-             [billingStreetInput, billingCityInput, billingStateInput, billingPincodeInput, billingCountryInput].forEach(input => {
-                input.classList.remove('border-red-500');
-                 if (!input.value.trim()) {
-                     input.classList.add('border-red-500');
-                     isValid = false;
-                 }
-             });
-        }
-        return isValid;
-    }
-
-    nextButton.addEventListener('click', () => {
-        if (validateStep1()) {
-            step1.classList.add('hidden');
-            step2.classList.remove('hidden');
-            formTitle.textContent = 'Step 2: Create Owner Account';
-            window.scrollTo(0, 0); // Scroll to top
-        } else {
-            alert('Please fill in all required company and address details correctly.');
-        }
+    document.addEventListener('DOMContentLoaded', function () {
+        // Order Status Chart
+        const orderStatusChartCtx = document.getElementById('orderStatusChart');
+        <% if (typeof reportData !== 'undefined' && reportData.chartData?.orderStatus?.labels?.length > 0) { %>
+            new Chart(orderStatusChartCtx, {
+                type: 'bar', // Or 'doughnut' or 'pie'
+                data: {
+                    labels: <%- JSON.stringify(reportData.chartData.orderStatus.labels) %>,
+                    datasets: [{
+                        label: 'Order Count',
+                        data: <%- JSON.stringify(reportData.chartData.orderStatus.data) %>,
+                        backgroundColor: [
+                            'rgba(255, 99, 132, 0.2)',  // Red
+                            'rgba(54, 162, 235, 0.2)', // Blue
+                            'rgba(255, 206, 86, 0.2)', // Yellow
+                            'rgba(75, 192, 192, 0.2)', // Green
+                            'rgba(153, 102, 255, 0.2)',// Purple
+                            'rgba(255, 159, 64, 0.2)'  // Orange
+                        ],
+                        borderColor: [
+                            'rgba(255, 99, 132, 1)',
+                            'rgba(54, 162, 235, 1)',
+                            'rgba(255, 206, 86, 1)',
+                            'rgba(75, 192, 192, 1)',
+                            'rgba(153, 102, 255, 1)',
+                            'rgba(255, 159, 64, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false, // Important for fixed height container
+                    scales: {
+                        y: { beginAtZero: true, ticks: { stepSize: 1 } } // Ensure y-axis starts at 0 and has integer steps
+                    },
+                    plugins: {
+                        legend: { display: false } // Hide legend for cleaner look, or position it
+                    }
+                }
+            });
+        <% } %>
     });
-
-    prevButton.addEventListener('click', () => {
-        step2.classList.add('hidden');
-        step1.classList.remove('hidden');
-        formTitle.textContent = 'Step 1: Company Information';
-        window.scrollTo(0, 0); // Scroll to top
-    });
-
-    // Handle "Same as main address" checkbox
-    sameAsMainCheckbox.addEventListener('change', () => {
-         if (sameAsMainCheckbox.checked) {
-             billingAddressFields.classList.add('hidden');
-             // Clear billing fields and remove required attribute if they had one
-             billingStreetInput.value = ''; billingStreetInput.required = false; billingStreetInput.classList.remove('border-red-500');
-             billingCityInput.value = ''; billingCityInput.required = false; billingCityInput.classList.remove('border-red-500');
-             billingStateInput.value = ''; billingStateInput.required = false; billingStateInput.classList.remove('border-red-500');
-             billingPincodeInput.value = ''; billingPincodeInput.required = false; billingPincodeInput.classList.remove('border-red-500');
-             billingCountryInput.value = 'India'; billingCountryInput.required = false; billingCountryInput.classList.remove('border-red-500');
-         } else {
-             billingAddressFields.classList.remove('hidden');
-             // Add required attribute back if needed for validation when shown
-             billingStreetInput.required = true;
-             billingCityInput.required = true;
-             billingStateInput.required = true;
-             billingPincodeInput.required = true;
-             billingCountryInput.required = true;
-         }
-    });
-
-    // Initial check for billing address visibility on load (if editing later)
-    document.addEventListener('DOMContentLoaded', () => {
-         if (sameAsMainCheckbox.checked) {
-             billingAddressFields.classList.add('hidden');
-             billingStreetInput.required = false; billingCityInput.required = false; billingStateInput.required = false; billingPincodeInput.required = false; billingCountryInput.required = false;
-         } else {
-             billingAddressFields.classList.remove('hidden');
-             billingStreetInput.required = true; billingCityInput.required = true; billingStateInput.required = true; billingPincodeInput.required = true; billingCountryInput.required = true;
-         }
-    });
-
-
 </script>
-
-</body>
-</html>
