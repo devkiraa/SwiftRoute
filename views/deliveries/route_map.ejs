@@ -115,7 +115,7 @@
   document.getElementById('recenter-btn').onclick = ()=> lastPos && map.panTo(lastPos);
 
   function initRouteMap(){
-    map = new google.maps.Map(document.getElementById('route-map'),{ center:{lat:12.9716,lng:77.5946},zoom:12, mapTypeControl:false,fullscreenControl:false });
+    map = new google.maps.Map(document.getElementById('route-map'),{ center:{lat:10.8505,lng:76.2711},zoom:7, mapTypeControl:false,fullscreenControl:false });
     loader.style.display='none';
     vehicleMarker = new google.maps.Marker({ map, icon:{path:google.maps.SymbolPath.FORWARD_CLOSED_ARROW,scale:6,fillColor:'#F00',fillOpacity:1,strokeWeight:1,strokeColor:'#FFF'} });
     navigator.geolocation.watchPosition(p=>{ lastPos={lat:p.coords.latitude,lng:p.coords.longitude}; vehicleMarker.setPosition(lastPos); },console.error,{enableHighAccuracy:true});
