@@ -316,136 +316,92 @@ router.get('/:id', async (req, res) => {
 });
 
 
-// POST /orders - Create a new manual order
+// POST /orders - Create Manual Order (WITH TRANSACTION)
 router.post('/', ensureCanCreateOrder, async (req, res) => {
     console.log("Received POST /orders request body:", JSON.stringify(req.body, null, 2));
     const loggedInUser = res.locals.loggedInUser;
     let storesForForm = [], warehousesForForm = [], itemsForForm = [];
-
     const { storeId, warehouseId, customerName, customerPhone, itemIds, quantities } = req.body;
 
+    const session = await mongoose.startSession(); // Start a session
+
     try {
-        // --- Validation ---
-        if (!storeId || !warehouseId || !customerName || !itemIds || !quantities) {
-            throw new Error("Missing required fields (store, warehouse, customer name, items, or quantities).");
-        }
-        if (!mongoose.Types.ObjectId.isValid(storeId)) throw new Error("Invalid Store ID format.");
-        if (!mongoose.Types.ObjectId.isValid(warehouseId)) throw new Error("Invalid Warehouse ID format.");
+        let newOrderId = null; // To store the ID of the newly created order
 
-        const validItemIds = Array.isArray(itemIds) ? itemIds.filter(id => id && mongoose.Types.ObjectId.isValid(id)) : [];
-        const validQuantities = Array.isArray(quantities) ? quantities.filter((qty, index) => itemIds[index] && mongoose.Types.ObjectId.isValid(itemIds[index]) && !isNaN(parseInt(qty)) && parseInt(qty) > 0).map(qty => parseInt(qty)) : [];
+        await session.withTransaction(async () => { // Start transaction
+            // --- Validation --- (Keep your existing validation)
+            if (!storeId || !warehouseId || !customerName || !itemIds || !quantities) throw new Error("Missing fields.");
+            const validItemIds = Array.isArray(itemIds) ? itemIds.filter(id => id && mongoose.Types.ObjectId.isValid(id)) : [];
+            const validQuantities = Array.isArray(quantities) ? quantities.filter((qty, i) => itemIds[i] && !isNaN(parseInt(qty)) && parseInt(qty) > 0).map(qty => parseInt(qty)) : [];
+            if (validItemIds.length === 0 || validItemIds.length !== validQuantities.length) throw new Error("No valid items or item/quantity mismatch.");
 
-        if (validItemIds.length === 0) { // Check if any valid items were selected
-            throw new Error("No valid items selected for the order.");
-        }
-        if (validItemIds.length !== validQuantities.length) {
-            throw new Error("Mismatch between selected items and quantities.");
-        }
-        console.log(`Valid items for processing: ${validItemIds.length}`);
+            const selectedStore = await Store.findById(storeId).session(session).lean();
+            if (!selectedStore) throw new Error(`Store ${storeId} not found.`);
+            if (!selectedStore.address) throw new Error(`Store ${selectedStore.storeName} missing address.`);
 
-        // --- Fetch Store/Warehouse & Auth Check ---
-        const selectedStore = await Store.findById(storeId).lean();
-        const selectedWarehouse = await Warehouse.findById(warehouseId).lean();
-        if (!selectedStore) throw new Error(`Selected Store with ID ${storeId} not found.`);
-        if (!selectedWarehouse) throw new Error(`Selected Warehouse with ID ${warehouseId} not found.`);
-        if (!selectedStore.address) throw new Error(`Selected Store (${selectedStore.storeName}) is missing its address.`);
-        // ... (Company auth checks for store/warehouse if needed) ...
+            // --- Prepare Order Items, Check Stock, Calculate Total (within transaction) ---
+            let totalAmount = 0;
+            const orderItemsData = []; // For saving to order
+            const populatedOrderItemsForStock = []; // For passing to stock helper
 
-        // --- Prepare Order Items & Calculate Total ---
-        console.log("Preparing order items...");
-        let totalAmount = 0;
-        const orderItemsData = [];
+            for (let i = 0; i < validItemIds.length; i++) {
+                const currentItemId = validItemIds[i];
+                const currentQuantity = validQuantities[i];
+                const item = await Item.findOne({ _id: currentItemId, warehouseId: warehouseId })
+                                     .select('name sku sellingPrice quantity') // Need quantity for stock check
+                                     .session(session).lean(); // Use session
+                if (!item) throw new Error(`Item ID ${currentItemId} not found in Warehouse or missing data.`);
+                if (typeof item.sellingPrice !== 'number') throw new Error(`Selling price missing for ${item.name}.`);
 
-        for (let i = 0; i < validItemIds.length; i++) {
-            const currentItemId = validItemIds[i];
-            const currentQuantity = validQuantities[i];
-            console.log(`Processing Item ID: ${currentItemId}, Quantity: ${currentQuantity}`);
+                // STOCK CHECK (already part of updateStockForOrderItems, but good for early fail)
+                if (item.quantity < currentQuantity) {
+                    throw new Error(`Insufficient stock for ${item.name} (SKU: ${item.sku}). Available: ${item.quantity}, Requested: ${currentQuantity}.`);
+                }
 
-            // Fetch each item individually to ensure it exists in the specified warehouse and has a price
-            const item = await Item.findOne({ _id: currentItemId, warehouseId: warehouseId })
-                                   .select('name sku sellingPrice quantity') // Select necessary fields + current quantity for stock check
-                                   .lean();
-
-            if (!item) {
-                throw new Error(`Item with ID ${currentItemId} not found in warehouse ${selectedWarehouse.name} or does not exist.`);
+                orderItemsData.push({ itemId: item._id, quantity: currentQuantity, priceAtOrder: item.sellingPrice });
+                // For stock helper, we need the populated item (or at least its ID and name/sku for logging)
+                populatedOrderItemsForStock.push({ itemId: item, quantity: currentQuantity });
+                totalAmount += currentQuantity * item.sellingPrice;
             }
-            console.log(`Found item: ${item.name}, SKU: ${item.sku}, Selling Price: ${item.sellingPrice}, Available Qty: ${item.quantity}`);
+            if (isNaN(totalAmount)) throw new Error("Total amount calculation failed.");
 
-            if (typeof item.sellingPrice !== 'number' || isNaN(item.sellingPrice)) {
-                throw new Error(`Selling price is missing or invalid for item ${item.name} (SKU: ${item.sku}).`);
-            }
-
-            // --- ACTUAL STOCK CHECK ---
-            if (item.quantity < currentQuantity) {
-                throw new Error(`Insufficient stock for item ${item.name} (SKU: ${item.sku}). Available: ${item.quantity}, Requested: ${currentQuantity}.`);
-            }
-            // --- End Stock Check ---
-
-            orderItemsData.push({
-                itemId: item._id,
-                quantity: currentQuantity,
-                priceAtOrder: item.sellingPrice
+            // --- Create Order Document ---
+            const newOrder = new Order({
+                storeId, warehouseId, customerName, customerPhone, customerId: null,
+                shippingAddress: selectedStore.address, shippingLocation: selectedStore.location,
+                orderItems: orderItemsData, totalAmount, orderStatus: 'confirmed',
+                createdBy: loggedInUser._id, placedDate: new Date(), updatedDate: new Date(),
             });
-            totalAmount += currentQuantity * item.sellingPrice;
-            console.log(`Added to order: ${item.name}, Qty: ${currentQuantity}, Price: ${item.sellingPrice}. Subtotal: ${currentQuantity * item.sellingPrice}. Running Total: ${totalAmount}`);
-        }
+            const savedOrder = await newOrder.save({ session }); // Pass session
+            newOrderId = savedOrder._id; // Store the ID
+            console.log("Manual order saved within transaction:", savedOrder._id);
 
-        if (orderItemsData.length === 0 && validItemIds.length > 0) {
-             throw new Error("Could not process any items for the order, likely due to missing item data or stock issues.");
-        }
-        console.log(`Prepared ${orderItemsData.length} distinct item lines. Calculated Total: ${totalAmount}`);
-        if (isNaN(totalAmount)) {
-            throw new Error("Failed to calculate a valid total amount. Please check item prices and quantities.");
-        }
+            // --- STOCK DEDUCTION (using helper function) ---
+            await updateStockForOrderItems(populatedOrderItemsForStock, warehouseId, 'deduct', session);
+            console.log("Stock deduction complete for new order within transaction.");
+        }); // Transaction commits here if all successful
 
-        // --- Create Order Document ---
-        const orderDataToSave = {
-            storeId, warehouseId, customerName, customerPhone, customerId: null,
-            shippingAddress: selectedStore.address,
-            shippingLocation: selectedStore.location,
-            orderItems: orderItemsData, // This should now be correctly populated
-            totalAmount: totalAmount,   // This should be correctly calculated
-            orderStatus: 'confirmed',
-            createdBy: loggedInUser._id,
-            placedDate: new Date(), updatedDate: new Date(),
-            assignedDeliveryPartnerId: null
-        };
-        console.log("Data being passed to new Order():", JSON.stringify(orderDataToSave, null, 2));
-
-        const newOrder = new Order(orderDataToSave);
-        await newOrder.save();
-        console.log("Manual order saved:", newOrder._id);
-
-        // --- STOCK DEDUCTION (Implemented here for simplicity, use transactions in production) ---
-        console.log("Deducting stock...");
-        for (const orderedItem of orderItemsData) {
-            await Item.updateOne(
-                { _id: orderedItem.itemId, warehouseId: warehouseId },
-                { $inc: { quantity: -orderedItem.quantity } }
-            );
-            console.log(`Deducted ${orderedItem.quantity} from item ${orderedItem.itemId}`);
-        }
-        console.log("Stock deduction complete.");
-        // --- End Stock Deduction ---
-
-        res.redirect(`/orders/${newOrder._id}?success=Order+created+successfully`);
+        res.redirect(`/orders/${newOrderId}?success=Order+created+successfully`);
 
     } catch (err) {
-        console.error("Error creating manual order:", err);
+        console.error("Error creating manual order (transaction may have aborted):", err);
+        // Fetch supporting data again for form re-render
         try {
-            let storeQuery = {}, warehouseQueryForForm = {}, itemQueryForForm = {};
-            if (loggedInUser && loggedInUser.role !== 'admin') { /* ... */ }
-            [storesForForm, warehousesForForm, itemsForForm] = await Promise.all([ /* ... */ ]);
+            // ... (your logic to fetch storesForForm, warehousesForForm, itemsForForm)
             res.status(400).render('orders/form', {
-                title: 'Create Manual Order', order: req.body,
+                title: 'Create Manual Order', order: req.body, 
                 stores: storesForForm, warehouses: warehousesForForm, items: itemsForForm,
                 error: `Failed to create order: ${err.message}`,
                 layout: './layouts/dashboard_layout'
             });
-        } catch (renderErr) { /* ... */ }
+        } catch (renderErr) {
+            console.error("Error re-rendering order form after transaction error:", renderErr);
+            res.status(500).render('error_page', { title: "Error", message: "Error processing order creation.", layout: false });
+        }
+    } finally {
+        await session.endSession(); // Always end session
     }
 });
-
 // POST /orders/:id/assign-driver - Assign driver
 router.post('/:id/assign-driver', ensureCanManageOrder, async (req, res) => {
      // ... (Keep assign driver logic from response #38) ...
@@ -541,47 +497,70 @@ router.get('/:id/edit', ensureCanManageOrder, async (req, res) => {
     }
 });
 
-// Helper function for stock operations (can be moved to a utility file)
+// Helper function for stock operations (modified to always use session)
 async function updateStockForOrderItems(orderItems, warehouseId, operation, session) {
+    console.log(`[StockHelper] Starting stock operation: ${operation} for warehouse ${warehouseId}`);
     const stockUpdates = [];
     for (const orderItem of orderItems) {
-        const itemDoc = orderItem.itemId; // This should be the populated Item document
-        const quantityToAdjust = orderItem.quantity;
+        // Ensure itemDoc is the actual item document or just its ID to be fetched.
+        // If orderItem.itemId is just an ID, you might need to fetch the item's current stock first.
+        // For deduction, a pre-check is good, but the update itself needs to be atomic.
+        
+        let itemIdToUpdate;
+        let itemNameToLog = 'Unknown Item';
+        let itemSkuToLog = 'N/A';
 
-        if (!itemDoc || !itemDoc._id) {
-            throw new Error(`Invalid item data in order for stock adjustment.`);
+        if (orderItem.itemId && orderItem.itemId._id) { // If itemId is a populated object
+            itemIdToUpdate = orderItem.itemId._id;
+            itemNameToLog = orderItem.itemId.name;
+            itemSkuToLog = orderItem.itemId.sku;
+        } else if (mongoose.Types.ObjectId.isValid(orderItem.itemId)) { // If itemId is just an ID
+            itemIdToUpdate = orderItem.itemId;
+            // Fetch item details for logging and potentially for the pre-check inside transaction
+            const tempItem = await Item.findById(itemIdToUpdate).select('name sku').lean().session(session); // Use session if fetching inside transaction
+            if(tempItem) {
+                itemNameToLog = tempItem.name;
+                itemSkuToLog = tempItem.sku;
+            }
+        } else {
+            throw new Error(`Invalid item data in order for stock adjustment. Item ID: ${orderItem.itemId}`);
         }
 
+        const quantityToAdjust = orderItem.quantity;
         let stockChange;
+
         if (operation === 'deduct') {
             stockChange = -quantityToAdjust;
-            // Double-check available stock again within transaction if paranoid, or rely on prior check
-            const currentItemInDB = await Item.findOne({ _id: itemDoc._id, warehouseId: warehouseId }).session(session);
-            if (!currentItemInDB || currentItemInDB.quantity < quantityToAdjust) {
-                throw new Error(`Insufficient stock for item ${itemDoc.name} (SKU: ${itemDoc.sku}) during final deduction. Available: ${currentItemInDB?.quantity || 0}, Needed: ${quantityToAdjust}.`);
+            // Check current stock *within the transaction* just before update for maximum safety
+            const currentItemInDB = await Item.findOne({ _id: itemIdToUpdate, warehouseId: warehouseId }).session(session);
+            if (!currentItemInDB) {
+                 throw new Error(`Item ${itemNameToLog} (SKU: ${itemSkuToLog}, ID: ${itemIdToUpdate}) not found in warehouse ${warehouseId} for stock deduction.`);
+            }
+            if (currentItemInDB.quantity < quantityToAdjust) {
+                throw new Error(`Insufficient stock for item ${itemNameToLog} (SKU: ${itemSkuToLog}) during final deduction. Available: ${currentItemInDB.quantity}, Needed: ${quantityToAdjust}.`);
             }
         } else if (operation === 'restore') {
             stockChange = +quantityToAdjust;
         } else {
-            throw new Error("Invalid stock operation type.");
+            throw new Error("Invalid stock operation type specified.");
         }
 
-        console.log(`Adjusting stock for Item ${itemDoc._id} in Warehouse ${warehouseId} by ${stockChange}`);
+        console.log(`[StockHelper] Preparing to adjust stock for Item ${itemIdToUpdate} (SKU: ${itemSkuToLog}) in Warehouse ${warehouseId} by ${stockChange}`);
         stockUpdates.push(
             Item.updateOne(
-                { _id: itemDoc._id, warehouseId: warehouseId }, // Ensure updating item in correct warehouse
-                { $inc: { quantity: stockChange } },
-                { session }
+                { _id: itemIdToUpdate, warehouseId: warehouseId },
+                { $inc: { quantity: stockChange }, $set: { lastUpdated: new Date() } },
+                { session } // Pass session here
             )
         );
     }
-    await Promise.all(stockUpdates);
-    console.log(`Stock adjustments (${operation}) successful for order items.`);
+    await Promise.all(stockUpdates); // Execute all updates
+    console.log(`[StockHelper] Stock adjustments (${operation}) successful for order items.`);
 }
 
 
-// PUT /orders/:id/status - Update Order Status (WITH STOCK LOGIC)
-router.put('/:id/status', ensureAuthenticated, ensureCanManageOrder, async (req, res) => {
+// PUT /orders/:id/status - Update Order Status (WITH TRANSACTION)
+router.put('/:id/status', ensureCanManageOrder, async (req, res) => {
     const orderId = req.params.id;
     const { newStatus } = req.body;
     const loggedInUser = res.locals.loggedInUser;
@@ -591,74 +570,57 @@ router.put('/:id/status', ensureAuthenticated, ensureCanManageOrder, async (req,
         return res.redirect(`/orders/${orderId}?error=Invalid+status+value`);
     }
 
-    const session = await mongoose.startSession(); // Start a session for transaction
+    const session = await mongoose.startSession(); // Start session
 
     try {
         await session.withTransaction(async () => { // Start transaction
             const order = await Order.findById(orderId)
-                .populate({
-                    path: 'orderItems.itemId', // Populate item details needed for stock
-                    model: 'Item',
-                    select: 'name sku quantity warehouseId' // Ensure warehouseId of item is available if needed
-                })
-                .populate('warehouseId', '_id name') // Warehouse fulfilling this order
-                .session(session); // Important: Use session for all ops in transaction
+                .populate({ path: 'orderItems.itemId', model: 'Item', select: 'name sku quantity' }) // Select fields needed by stock helper
+                .populate('warehouseId', '_id name')
+                .session(session); // Use session
 
             if (!order) throw new Error("Order not found.");
             if (!order.warehouseId?._id) throw new Error("Order is missing warehouse information for stock operations.");
 
-            // Re-verify management permission (already done by middleware, but good practice)
-            // ... (auth check kept from previous version) ...
-
             const currentStatus = order.orderStatus;
-            const warehouseIdForStock = order.warehouseId._id; // The warehouse of THIS order
-            console.log(`Current status: ${currentStatus}, Order Warehouse: ${warehouseIdForStock}, Attempting update to: ${newStatus}`);
+            const warehouseIdForStock = order.warehouseId._id;
+            console.log(`Current status: ${currentStatus}, Target status: ${newStatus}, Warehouse: ${warehouseIdForStock}`);
 
-            // --- State Machine Logic (Keep as is) ---
-            const validTransitions = { /* ... */ };
+            const validTransitions = {
+                pending: ['confirmed', 'cancelled'],
+                confirmed: ['shipped', 'cancelled'],
+                shipped: ['delivered', 'cancelled'], // Allow cancelling shipped? Or a 'return' process?
+                delivered: [], // No transitions out of delivered for now
+                cancelled: []  // No transitions out of cancelled
+            };
             if (!validTransitions[currentStatus] || !validTransitions[currentStatus].includes(newStatus)) {
                 throw new Error(`Invalid status transition from '${currentStatus}' to '${newStatus}'.`);
             }
 
             // --- Stock Check & Adjustments ---
             if (newStatus === 'shipped' && currentStatus === 'confirmed') {
-                console.log("Checking stock and preparing deduction for order:", orderId);
-                // Check availability for all items in this order against its specific warehouse
-                for (const orderItem of order.orderItems) {
-                    const itemDoc = orderItem.itemId;
-                    const requestedQty = orderItem.quantity;
-                    if (!itemDoc) throw new Error(`Item data missing for an item in the order.`);
-
-                    // Find the specific item in the order's designated warehouse
-                    const stockItem = await Item.findOne({ _id: itemDoc._id, warehouseId: warehouseIdForStock }).session(session);
-                    if (!stockItem) throw new Error(`Item ${itemDoc.name} not found in warehouse ${order.warehouseId.name}.`);
-                    if (stockItem.quantity < requestedQty) {
-                        throw new Error(`Insufficient stock for item ${itemDoc.name} (SKU: ${itemDoc.sku}). Available: ${stockItem.quantity}, Needed: ${requestedQty}. Please adjust order or stock.`);
-                    }
-                }
-                // If all checks pass, perform deductions
+                console.log("Preparing stock deduction for order:", orderId);
                 await updateStockForOrderItems(order.orderItems, warehouseIdForStock, 'deduct', session);
-
             } else if (newStatus === 'cancelled' && ['confirmed', 'shipped'].includes(currentStatus)) {
+                // Only restore stock if it was confirmed (potentially allocated) or shipped (deducted)
                 console.log("Preparing stock restoration for cancelled order:", orderId);
                 await updateStockForOrderItems(order.orderItems, warehouseIdForStock, 'restore', session);
             }
 
-            // --- Update Order Status ---
             order.orderStatus = newStatus;
             order.updatedDate = new Date();
             order.lastUpdatedBy = loggedInUser._id;
-            await order.save({ session }); // Pass session
-        }); // End of transaction
+            await order.save({ session }); // Save order update within transaction
+        }); // Transaction commits here if all successful
 
         console.log(`Order ${orderId} status updated to '${newStatus}' successfully.`);
         res.redirect(`/orders/${orderId}?success=Order+status+updated+to+${newStatus}`);
 
     } catch (err) {
-        console.error(`Error updating order ${orderId} status:`, err);
+        console.error(`Error updating order ${orderId} status (transaction may have aborted):`, err);
         res.redirect(`/orders/${orderId}?error=${encodeURIComponent(`Status update failed: ${err.message}`)}`);
     } finally {
-        await session.endSession(); // Always end session
+        await session.endSession(); // Always end the session
     }
 });
 

@@ -228,131 +228,107 @@ router.get('/map', async (req, res) => {
     });
   }
 });
-async function updateStockForOrderItems(orderItems, warehouseId, operation, session) {
-      const stockUpdates = [];
-      for (const orderItem of orderItems) {
-          const itemDoc = orderItem.itemId;
-          const quantityToAdjust = orderItem.quantity;
-          if (!itemDoc || !itemDoc._id) throw new Error(`Invalid item data for stock adjustment.`);
+async function updateStockForBatchPickup(aggregatedItems, warehouseId, session) {
+    console.log(`[StockHelper-Batch] Starting stock DEDUCTION for warehouse ${warehouseId}`);
+    const stockUpdates = [];
+    for (const aggItem of aggregatedItems) { // aggregatedItems: { itemId, name, sku, neededQuantity }
+        const itemIdToUpdate = aggItem.itemId;
+        const quantityToAdjust = aggItem.neededQuantity;
+
+        if (!itemIdToUpdate || !mongoose.Types.ObjectId.isValid(itemIdToUpdate)) {
+            throw new Error(`Invalid item data in aggregated list for stock adjustment. Item ID: ${itemIdToUpdate}`);
+        }
+
+        // Check current stock *within the transaction*
+        const currentItemInDB = await Item.findOne({ _id: itemIdToUpdate, warehouseId: warehouseId }).session(session);
+        if (!currentItemInDB) {
+            throw new Error(`Item ${aggItem.name || itemIdToUpdate} (SKU: ${aggItem.sku}) not found in warehouse ${warehouseId} for stock deduction.`);
+        }
+        if (currentItemInDB.quantity < quantityToAdjust) {
+            throw new Error(`Insufficient stock for item ${aggItem.name} (SKU: ${aggItem.sku}) during batch deduction. Available: ${currentItemInDB.quantity}, Total Needed for Batch: ${quantityToAdjust}.`);
+        }
+        
+        console.log(`[StockHelper-Batch] Preparing to deduct ${quantityToAdjust} from Item ${itemIdToUpdate} (SKU: ${aggItem.sku}) in Warehouse ${warehouseId}`);
+        stockUpdates.push(
+            Item.updateOne(
+                { _id: itemIdToUpdate, warehouseId: warehouseId },
+                { $inc: { quantity: -quantityToAdjust }, $set: { lastUpdated: new Date() } },
+                { session }
+            )
+        );
+    }
+    await Promise.all(stockUpdates);
+    console.log(`[StockHelper-Batch] Stock deductions successful for batch items.`);
+}
+ 
   
-          let stockChange;
-          if (operation === 'deduct') {
-              stockChange = -quantityToAdjust;
-              const currentItemInDB = await Item.findOne({ _id: itemDoc._id, warehouseId: warehouseId }).session(session);
-              if (!currentItemInDB || currentItemInDB.quantity < quantityToAdjust) {
-                  throw new Error(`Insufficient stock for ${itemDoc.name} (SKU: ${itemDoc.sku}) during deduction. Have: ${currentItemInDB?.quantity || 0}, Need: ${quantityToAdjust}.`);
-              }
-          } else if (operation === 'restore') {
-              stockChange = +quantityToAdjust;
-          } else {
-              throw new Error("Invalid stock operation.");
-          }
-          stockUpdates.push(
-              Item.updateOne({ _id: itemDoc._id, warehouseId: warehouseId }, { $inc: { quantity: stockChange } }, { session })
-          );
-      }
-      await Promise.all(stockUpdates);
-      console.log(`Stock adjustments (${operation}) for involved items completed.`);
-  }
-  
-  
-  // POST /deliveries/batch-pickup - Mark ALL confirmed orders for warehouse as shipped
-  router.post('/batch-pickup', async (req, res) => {
-      const loggedInUser = res.locals.loggedInUser;
-      console.log(`--- Driver ${loggedInUser._id} attempting BATCH pickup ---`);
-      let originWarehouseId = null;
-  
-      const session = await mongoose.startSession(); // Start session for transaction
-  
-      try {
-          await session.withTransaction(async () => { // Start transaction
-              // 1. Find 'confirmed' orders to determine the warehouse and items
-              const ordersToPick = await Order.find({
-                  assignedDeliveryPartnerId: loggedInUser._id,
-                  orderStatus: 'confirmed'
-              })
-              .populate('orderItems.itemId', 'name sku quantity warehouseId') // Populate item details for stock logic
-              .populate('warehouseId', '_id name') // For warehouse name in logs
-              .session(session); // Use session
-  
-              if (ordersToPick.length === 0) throw new Error("No confirmed orders found ready for pickup.");
-  
-              // Determine and validate origin warehouse (should be consistent for a batch)
-              originWarehouseId = ordersToPick[0].warehouseId?._id;
-              if (!originWarehouseId) throw new Error("Could not determine origin warehouse from orders.");
-              const allFromSameWarehouse = ordersToPick.every(o => o.warehouseId?._id.toString() === originWarehouseId.toString());
-              if (!allFromSameWarehouse) throw new Error("Batch pickup orders must be from the same warehouse.");
-              console.log(`Attempting batch pickup from warehouse ${originWarehouseId} for driver ${loggedInUser._id}`);
-  
-              // 2. Aggregate all items needed across these orders
-              const itemQuantitiesNeeded = ordersToPick
-                  .flatMap(o => o.orderItems)
-                  .reduce((acc, current) => {
-                      const itemIdStr = current.itemId?._id?.toString();
-                      if (itemIdStr) acc[itemIdStr] = (acc[itemIdStr] || 0) + current.quantity;
-                      return acc;
-                  }, {});
-              const neededItemIds = Object.keys(itemQuantitiesNeeded);
-              console.log("Aggregated items for stock check:", itemQuantitiesNeeded);
-  
-              // 3. CRITICAL STOCK CHECK for all aggregated items
-              if (neededItemIds.length > 0) {
-                  console.log("Checking stock levels for batch pickup...");
-                  const stockItems = await Item.find({
-                      _id: { $in: neededItemIds },
-                      warehouseId: originWarehouseId // IMPORTANT: Check in the correct warehouse
-                  }).session(session);
-                  const stockMap = new Map(stockItems.map(i => [i._id.toString(), i.quantity]));
-  
-                  for (const itemId of neededItemIds) {
-                      const needed = itemQuantitiesNeeded[itemId];
-                      const available = stockMap.get(itemId) ?? -1;
-                      const itemDetailsForError = await Item.findById(itemId).select('name sku').lean(); // For better error message
-                      if (available < needed) {
-                          throw new Error(`Insufficient stock for ${itemDetailsForError?.name || 'Item '+itemId} (SKU: ${itemDetailsForError?.sku || 'N/A'}). Available: ${available < 0 ? 0 : available}, Needed for batch: ${needed}`);
-                      }
-                      console.log(`Stock OK for item ${itemId}. Needed: ${needed}, Available: ${available}`);
-                  }
-                  console.log("Stock check passed for all items in batch.");
-              }
-  
-              // 4. Perform Stock Deduction (if all checks passed)
-              let stockUpdates = [];
-              for (const itemId of neededItemIds) {
-                  stockUpdates.push(
-                      Item.updateOne(
-                          { _id: itemId, warehouseId: originWarehouseId }, // Ensure deduction from correct warehouse
-                          { $inc: { quantity: -itemQuantitiesNeeded[itemId] } },
-                          { session }
-                      )
-                  );
-              }
-              if (stockUpdates.length > 0) {
-                  console.log(`Executing ${stockUpdates.length} stock deductions for batch...`);
-                  await Promise.all(stockUpdates);
-                  console.log("Stock deductions successful for batch.");
-              }
-  
-              // 5. Update Order Statuses
-              const orderIdsToUpdate = ordersToPick.map(o => o._id);
-              console.log(`Updating status to 'shipped' for ${orderIdsToUpdate.length} orders...`);
-              const updateResult = await Order.updateMany(
-                  { _id: { $in: orderIdsToUpdate } },
-                  { $set: { orderStatus: 'shipped', updatedDate: new Date() } },
-                  { session }
-              );
-              console.log(`Batch pickup complete: ${updateResult.modifiedCount} orders marked as 'shipped'.`);
-          }); // End of transaction
-  
-          res.redirect('/deliveries/map?success=Orders+picked+up.+Route+ready.');
-  
-      } catch (err) {
-          console.error(`Error during batch pickup:`, err);
-          res.redirect(`/deliveries/my?error=${encodeURIComponent(`Pickup failed: ${err.message}`)}`);
-      } finally {
-          await session.endSession();
-      }
-  });
+  // POST /deliveries/batch-pickup (WITH TRANSACTION)
+router.post('/batch-pickup', async (req, res) => {
+    const loggedInUser = res.locals.loggedInUser;
+    console.log(`--- Driver ${loggedInUser._id} attempting BATCH pickup ---`);
+    
+    const session = await mongoose.startSession(); // Start session
+
+    try {
+        await session.withTransaction(async () => { // Start transaction
+            const ordersToPick = await Order.find({
+                assignedDeliveryPartnerId: loggedInUser._id,
+                orderStatus: 'confirmed'
+            })
+            .populate('orderItems.itemId', 'name sku') // For better error messages if needed
+            .populate('warehouseId', '_id name')
+            .session(session); // Use session
+
+            if (ordersToPick.length === 0) throw new Error("No confirmed orders found ready for pickup.");
+
+            const originWarehouseId = ordersToPick[0].warehouseId?._id;
+            if (!originWarehouseId) throw new Error("Could not determine origin warehouse.");
+            if (!ordersToPick.every(o => o.warehouseId?._id.toString() === originWarehouseId.toString())) {
+                throw new Error("Batch pickup orders must be from the same warehouse.");
+            }
+            console.log(`Batch pickup from warehouse ${originWarehouseId} for ${ordersToPick.length} orders.`);
+
+            // Aggregate all items and their quantities needed for this batch from this warehouse
+            const aggregatedItemsForStock = await Order.aggregate([
+                { $match: { _id: { $in: ordersToPick.map(o => o._id) }, warehouseId: originWarehouseId } }, // Ensure matching correct orders and warehouse
+                { $unwind: "$orderItems" },
+                { $group: { 
+                    _id: "$orderItems.itemId", 
+                    neededQuantity: { $sum: "$orderItems.quantity" } 
+                }},
+                { $lookup: { from: "items", localField: "_id", foreignField: "_id", as: "itemDetails" }},
+                { $unwind: "$itemDetails" }, // Assume item must exist
+                { $project: { 
+                    _id: 0, itemId: "$_id", 
+                    name: "$itemDetails.name", sku: "$itemDetails.sku", 
+                    neededQuantity: "$neededQuantity" 
+                }}
+            ]).session(session); // Run aggregation within session
+
+            console.log("Aggregated items for stock check/deduction:", JSON.stringify(aggregatedItemsForStock));
+
+            if (aggregatedItemsForStock.length > 0) {
+                // This helper will do the check and then the update for each item
+                await updateStockForBatchPickup(aggregatedItemsForStock, originWarehouseId, session);
+            }
+
+            const orderIdsToUpdate = ordersToPick.map(o => o._id);
+            await Order.updateMany(
+                { _id: { $in: orderIdsToUpdate } },
+                { $set: { orderStatus: 'shipped', updatedDate: new Date(), lastUpdatedBy: loggedInUser._id } },
+                { session }
+            );
+            console.log(`Batch pickup complete: ${orderIdsToUpdate.length} orders marked 'shipped'.`);
+        }); // Transaction commits here
+
+        res.redirect('/deliveries/map?success=Orders+picked+up.+Route+ready.');
+    } catch (err) {
+        console.error(`Error during batch pickup (transaction may have aborted):`, err);
+        res.redirect(`/deliveries/my?error=${encodeURIComponent(`Pickup failed: ${err.message}`)}`);
+    } finally {
+        await session.endSession();
+    }
+});
 
 // POST /deliveries/:orderId/delivered - Mark order as delivered
 router.post('/:orderId/delivered', async (req, res) => {
