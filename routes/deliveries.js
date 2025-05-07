@@ -101,7 +101,6 @@ router.get('/map', async (req, res) => {
       .populate('warehouseId', 'name location address')
       .populate('storeId', 'storeName address location')
       .lean();
-      console.log(`Found ${allAssignedOrders.length} assigned orders.`);
   
       // 2) Build points arrays
       const originalOrdersWithCoords = [];
@@ -114,40 +113,31 @@ router.get('/map', async (req, res) => {
           uniqueCoordsForOSRM.push({
             lng: w.location.coordinates[0],
             lat: w.location.coordinates[1],
-            type: 'warehouse',
-            name: w.name,
-            address: w.address
+            type: 'warehouse', name: w.name, address: w.address
           });
           originWarehouseForView = w;
-        } else {
-          throw new Error("Valid origin warehouse location is missing.");
-        }
+        } else throw new Error("Valid origin warehouse location is missing.");
   
         allAssignedOrders.forEach(order => {
           const coords = order.shippingLocation?.coordinates?.length === 2
             ? order.shippingLocation.coordinates
             : order.storeId?.location?.coordinates;
           if (coords?.length === 2) {
-            originalOrdersWithCoords.push({ orderDoc: order, deliveryLng: coords[0], deliveryLat: coords[1] });
+            originalOrdersWithCoords.push({ orderDoc: order });
             uniqueCoordsForOSRM.push({
-              lng: coords[0],
-              lat: coords[1],
-              type: 'delivery',
-              orderId: order._id,
+              lng: coords[0], lat: coords[1],
+              type: 'delivery', orderId: order._id,
               name: order.customerName || order.storeId?.storeName,
               address: order.storeId?.address || order.shippingAddress
             });
-          } else {
-            console.warn(`Order ${order._id} skipped due to missing coords.`);
           }
         });
       }
   
-      if (originalOrdersWithCoords.length === 0) {
+      if (!originalOrdersWithCoords.length) {
         return res.render('deliveries/route_map', {
           title: 'Delivery Route', orders: [], originWarehouse: originWarehouseForView,
-          routePolyline: null, routeLegs: [],
-          googleMapsApiKey: googleMapsApiKeyForView,
+          routeLegs: [], googleMapsApiKey: googleMapsApiKeyForView,
           errorMsg, layout: './layouts/dashboard_layout'
         });
       }
@@ -203,13 +193,11 @@ router.get('/map', async (req, res) => {
         });
       }
   
-      // 7) Render view with legs
       res.render('deliveries/route_map', {
-        title: 'Optimized Delivery Route (OSRM)',
+        title: 'Optimized Delivery Route',
         orders: originalOrdersWithCoords.map(o => o.orderDoc),
         originWarehouse: originWarehouseForView,
-        routePolyline: fullPolyline,
-        routeLegs,
+        routeLegs, // array of { startName, startAddress, endName, endAddress, startCoords, endCoords }
         googleMapsApiKey: googleMapsApiKeyForView,
         errorMsg,
         layout: './layouts/dashboard_layout'
@@ -219,8 +207,7 @@ router.get('/map', async (req, res) => {
       console.error('Error in /deliveries/map:', err);
       res.status(500).render('deliveries/route_map', {
         title: 'Error Loading Route', orders: [], originWarehouse: null,
-        routePolyline: null, routeLegs: [],
-        googleMapsApiKey: process.env.Maps_API_KEY,
+        routeLegs: [], googleMapsApiKey: process.env.Maps_API_KEY,
         errorMsg: `Server error: ${err.message}`,
         layout: './layouts/dashboard_layout'
       });
