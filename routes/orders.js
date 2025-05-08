@@ -12,6 +12,7 @@ const Company = require('../models/Company');
 const puppeteer = require('puppeteer'); // <-- ADDED: For PDF generation
 const ejs = require('ejs');             // <-- ADDED: To render EJS to string
 const path = require('path');  
+
 // --- End Model Imports ---
 
 // Google Maps Client (Keep available for potential future use)
@@ -440,161 +441,175 @@ router.put('/:id', ensureCanManageOrder, async (req, res) => {
     const orderId = req.params.id;
     const loggedInUser = res.locals.loggedInUser;
     console.log(`--- Attempting UPDATE for order ${orderId} ---`);
-    console.log("Received PUT /orders/:id request body:", JSON.stringify(req.body, null, 2));
-
     const { customerName, customerPhone, itemIds, quantities } = req.body;
-    // Note: storeId and warehouseId are generally not changed after creation
     
-    const session = await mongoose.startSession(); // Start session for transaction
+    const session = await mongoose.startSession(); 
 
     try {
-        let updatedOrderData = {}; // To hold final update values
-
-        await session.withTransaction(async () => { // Start transaction
+        await session.withTransaction(async () => { 
             
-            // 1. Fetch the original order within the transaction
+            // 1. Fetch original order
             const originalOrder = await Order.findById(orderId)
-                                        .populate('orderItems.itemId', 'name sku sellingPrice unitPrice') // Need unitPrice for COGS in potential stock restoration? Maybe not needed here directly. SellingPrice definitely needed.
+                                        .populate('orderItems.itemId', 'name sku sellingPrice')
                                         .session(session); 
             if (!originalOrder) throw new Error("Order not found.");
             if (!['pending', 'confirmed'].includes(originalOrder.orderStatus)) {
                  throw new Error(`Cannot edit order with status: ${originalOrder.orderStatus}`);
             }
-            const warehouseId = originalOrder.warehouseId; // Use the original warehouse for all stock ops
+            const warehouseId = originalOrder.warehouseId;
 
-            // --- Basic Validation ---
-            if (!customerName || !itemIds || !quantities) throw new Error("Missing required fields (customer name, items, or quantities).");
+            // 2. Basic Validation
+            if (!customerName || !itemIds || !quantities) throw new Error("Missing required fields.");
             const validNewItemIds = Array.isArray(itemIds) ? itemIds.filter(id => id && mongoose.Types.ObjectId.isValid(id)) : [];
-            const validNewQuantities = Array.isArray(quantities) ? quantities.filter((qty, i) => itemIds[i] && !isNaN(parseInt(qty)) && parseInt(qty) > 0).map(qty => parseInt(qty)) : [];
+            const validNewQuantities = Array.isArray(quantities) ? quantities.map(qty => parseInt(qty, 10)).filter((qty, i) => itemIds[i] && qty > 0) : [];
             if (validNewItemIds.length === 0 || validNewItemIds.length !== validNewQuantities.length) throw new Error("No valid items or item/quantity mismatch.");
 
-            // --- Process Item Changes & Stock Adjustments ---
+            // 3. Map original and new items
             const originalItemsMap = new Map(originalOrder.orderItems.map(item => [item.itemId._id.toString(), item.quantity]));
             const newItemsMap = new Map();
-            validNewItemIds.forEach((id, index) => {
-                newItemsMap.set(id, (newItemsMap.get(id) || 0) + validNewQuantities[index]); // Sum quantities if same item added multiple times
+            validNewItemIds.forEach((id, index) => { newItemsMap.set(id, (newItemsMap.get(id) || 0) + validNewQuantities[index]); });
+
+            // 4. Calculate stock adjustments needed
+            const stockAdjustmentsToMake = []; 
+            const itemsToCheckStock = []; 
+            
+            // Calculate restorations
+            originalItemsMap.forEach((origQty, itemIdStr) => {
+                const newQty = newItemsMap.get(itemIdStr) || 0;
+                if (newQty < origQty) {
+                    stockAdjustmentsToMake.push({ itemId: itemIdStr, quantity: origQty - newQty });
+                }
             });
 
-            const stockAdjustments = []; // Array of promises for stock updates
-            const itemsToRecheckStock = []; // Items added or quantity increased
-
-            // --- Calculate stock restoration (Items removed or quantity decreased) ---
-            for (const [itemIdStr, originalQty] of originalItemsMap.entries()) {
-                const newQty = newItemsMap.get(itemIdStr) || 0; // Get new quantity from submitted form data
-                if (newQty < originalQty) {
-                    const qtyToRestore = originalQty - newQty;
-                    console.log(`[Order Edit] Restoring stock for item ${itemIdStr}: ${qtyToRestore}`);
-                    stockAdjustments.push(
-                        Item.updateOne({ _id: itemIdStr, warehouseId: warehouseId }, { $inc: { quantity: qtyToRestore }, $set: { lastUpdated: new Date() } }, { session })
-                    );
-                }
-            }
-
-            // --- Calculate stock deduction needed (Items added or quantity increased) ---
+            // Calculate deductions needed
             for (const [itemIdStr, newQty] of newItemsMap.entries()) {
                 const originalQty = originalItemsMap.get(itemIdStr) || 0;
                 if (newQty > originalQty) {
-                    const qtyToDeduct = newQty - originalQty;
-                    console.log(`[Order Edit] Need to check/deduct stock for item ${itemIdStr}: ${qtyToDeduct}`);
-                    itemsToRecheckStock.push({ itemId: itemIdStr, quantity: qtyToDeduct });
+                    itemsToCheckStock.push({ itemId: itemIdStr, quantity: newQty - originalQty });
+                } else if (!originalItemsMap.has(itemIdStr)) {
+                    itemsToCheckStock.push({ itemId: itemIdStr, quantity: newQty });
                 }
             }
 
-            // --- Perform Stock Check for items needing deduction ---
-             if (itemsToRecheckStock.length > 0) {
-                console.log("[Order Edit] Checking stock for added/increased items...");
-                const itemIdsToCheck = itemsToRecheckStock.map(item => item.itemId);
-                const currentStockLevels = await Item.find({ _id: { $in: itemIdsToCheck }, warehouseId: warehouseId })
+            // 5. Perform stock checks *before* any updates
+            if (itemsToCheckStock.length > 0) {
+                console.log("[Order Edit] Checking stock for deductions...");
+                const itemIdsToCheck = itemsToCheckStock.map(i => i.itemId);
+                const currentStockItems = await Item.find({ _id: { $in: itemIdsToCheck }, warehouseId: warehouseId })
                                                     .select('_id quantity name sku')
-                                                    .session(session).lean();
-                const stockMap = new Map(currentStockLevels.map(i => [i._id.toString(), i]));
+                                                    .session(session); // Use lean() if not modifying direct results
+                const currentStockMap = new Map(currentStockItems.map(i => [i._id.toString(), i]));
 
-                for (const itemToCheck of itemsToRecheckStock) {
-                    const stockInfo = stockMap.get(itemToCheck.itemId);
-                    if (!stockInfo) throw new Error(`Item (${itemToCheck.itemId}) not found in warehouse ${warehouseId} during stock check.`);
-                    if (stockInfo.quantity < itemToCheck.quantity) {
-                        throw new Error(`Insufficient stock for item ${stockInfo.name} (SKU: ${stockInfo.sku}). Available: ${stockInfo.quantity}, Additional Needed: ${itemToCheck.quantity}.`);
+                for (const itemToDeduct of itemsToCheckStock) {
+                    const stockInfo = currentStockMap.get(itemToDeduct.itemId);
+                    if (!stockInfo) throw new Error(`Item (${itemToDeduct.itemId}) not found in warehouse ${warehouseId}.`);
+                    if (stockInfo.quantity < itemToDeduct.quantity) {
+                        throw new Error(`Insufficient stock for ${stockInfo.name||'Item'} (SKU: ${stockInfo.sku||'N/A'}). Available: ${stockInfo.quantity}, Need: ${itemToDeduct.quantity}.`);
                     }
-                    // Add deduction to promises
-                    console.log(`[Order Edit] Deducting stock for item ${itemToCheck.itemId}: ${itemToCheck.quantity}`);
-                    stockAdjustments.push(
-                         Item.updateOne({ _id: itemToCheck.itemId, warehouseId: warehouseId }, { $inc: { quantity: -itemToCheck.quantity }, $set: { lastUpdated: new Date() } }, { session })
-                    );
+                    // Add deduction to adjustments if stock is OK
+                    stockAdjustmentsToMake.push({ itemId: itemToDeduct.itemId, quantity: -itemToDeduct.quantity });
                 }
-                console.log("[Order Edit] Stock checks passed for added/increased items.");
             }
 
-            // --- Execute all stock adjustments together ---
-            if (stockAdjustments.length > 0) {
-                console.log(`[Order Edit] Executing ${stockAdjustments.length} stock adjustments...`);
-                await Promise.all(stockAdjustments);
-                console.log("[Order Edit] Stock adjustments completed.");
-            } else {
-                console.log("[Order Edit] No stock quantity changes detected.");
+            // 6. Execute ALL stock adjustments
+            if (stockAdjustmentsToMake.length > 0) {
+                 console.log("[Order Edit] Applying stock adjustments:", stockAdjustmentsToMake);
+                 const updatePromises = stockAdjustmentsToMake.map(adj => 
+                     Item.updateOne(
+                         { _id: adj.itemId, warehouseId: warehouseId },
+                         { $inc: { quantity: adj.quantity }, $set: { lastUpdated: new Date() } },
+                         { session }
+                     )
+                 );
+                 await Promise.all(updatePromises);
+                 console.log("[Order Edit] Stock adjustments applied.");
             }
 
-
-            // --- Prepare final updated orderItems array & Recalculate Total ---
+            // 7. Prepare final order items array and recalculate total
             let finalTotalAmount = 0;
             const finalOrderItems = [];
-            const finalItemDetails = await Item.find({ _id: { $in: Array.from(newItemsMap.keys()) } })
-                                            .select('sellingPrice')
-                                            .session(session).lean();
-            const finalPriceMap = new Map(finalItemDetails.map(i => [i._id.toString(), i.sellingPrice]));
+            const finalItemIds = Array.from(newItemsMap.keys());
 
-            for (const [itemIdStr, finalQty] of newItemsMap.entries()) {
-                 const price = finalPriceMap.get(itemIdStr);
-                 if (typeof price !== 'number') {
-                     throw new Error(`Could not retrieve selling price for item ${itemIdStr} while finalizing order.`);
-                 }
-                 finalOrderItems.push({ itemId: itemIdStr, quantity: finalQty, priceAtOrder: price });
-                 finalTotalAmount += finalQty * price;
+            if (finalItemIds.length > 0) {
+                console.log("[Order Edit] Fetching final prices for items:", finalItemIds);
+                // Fetch name/sku too for better error messages
+                const finalItemDetails = await Item.find({ _id: { $in: finalItemIds } })
+                                                .select('sellingPrice name sku') 
+                                                .session(session).lean();
+
+                // Check if all requested items were found for price lookup
+                if (finalItemDetails.length !== finalItemIds.length) {
+                     const foundIds = finalItemDetails.map(i => i._id.toString());
+                     const missingIds = finalItemIds.filter(id => !foundIds.includes(id));
+                     console.error("[Order Edit] Mismatch during final price lookup. Missing IDs:", missingIds);
+                     throw new Error(`Could not find details for all items. Missing: ${missingIds.join(', ')}`);
+                }
+
+                const finalPriceMap = new Map(finalItemDetails.map(i => [i._id.toString(), {price: i.sellingPrice, name: i.name, sku: i.sku}]));
+
+                for (const [itemIdStr, finalQty] of newItemsMap.entries()) {
+                    const itemInfo = finalPriceMap.get(itemIdStr);
+                    // This check should ideally be redundant due to the length check above, but good safety
+                    if (!itemInfo) { 
+                        throw new Error(`Details for item ${itemIdStr} unexpectedly missing after fetch.`);
+                    }
+                    const price = itemInfo.price;
+                    // Check if price is valid number
+                    if (typeof price !== 'number' || isNaN(price)) {
+                        throw new Error(`Selling price is missing or invalid for item ${itemInfo.name || itemIdStr} (SKU: ${itemInfo.sku || 'N/A'}). Cannot finalize order.`);
+                    }
+                    finalOrderItems.push({ itemId: itemIdStr, quantity: finalQty, priceAtOrder: price });
+                    finalTotalAmount += finalQty * price;
+                }
             }
-            if (isNaN(finalTotalAmount)) throw new Error("Failed to recalculate final total amount.");
-
-            // --- Update Order Document ---
+            if (isNaN(finalTotalAmount)) throw new Error("Recalculated total amount is invalid.");
+            console.log(`[Order Edit] Final total calculated: ${finalTotalAmount}`);
+            
+            // 8. Update Order Document
             originalOrder.customerName = customerName;
             originalOrder.customerPhone = customerPhone;
-            originalOrder.orderItems = finalOrderItems;
+            originalOrder.orderItems = finalOrderItems; // Replace the subdocument array
             originalOrder.totalAmount = finalTotalAmount;
             originalOrder.updatedDate = new Date();
             originalOrder.lastUpdatedBy = loggedInUser._id;
-
-            updatedOrderData = await originalOrder.save({ session }); // Save within transaction
+            
+            await originalOrder.save({ session }); 
             console.log(`Order ${orderId} updated successfully within transaction.`);
-
-        }); // Transaction commits here if all successful
+            
+        }); // Transaction commits here
 
         res.redirect(`/orders/${orderId}?success=Order+updated+successfully`);
 
     } catch (err) {
-        console.error(`Error updating order ${orderId}:`, err);
-        // Re-fetch data needed to render edit form again
+        console.error(`Error updating order ${orderId} (transaction aborted):`, err);
         try {
+             // Fetch necessary data again to re-render the edit form accurately
              const orderForForm = await Order.findById(orderId).populate('orderItems.itemId').populate('storeId').populate('warehouseId').lean();
-             const itemsForForm = await Item.find({ companyId: orderForForm.storeId?.companyId }).populate('warehouseId').lean(); // Re-fetch available items
+             const itemsForForm = orderForForm?.warehouseId?._id 
+                ? await Item.find({ warehouseId: orderForForm.warehouseId._id }).select('name sku sellingPrice _id quantity warehouseId').populate('warehouseId', 'name').lean() 
+                : []; 
              res.status(400).render('orders/edit_form', {
                 title: `Edit Order - ${orderId.toString().slice(-8)}`, 
-                order: orderForForm || { _id: orderId }, // Pass original order data
-                formData: req.body,                      // Pass submitted data back
-                items: itemsForForm,
+                order: orderForForm || { _id: orderId }, 
+                formData: req.body, // Show submitted data with error                      
+                items: itemsForForm, // Available items for adding
                 isEditing: true,
-                error: `Update failed: ${err.message}`,
+                error: `Update failed: ${err.message}`, // Pass specific error
                 layout: './layouts/dashboard_layout'
             });
         } catch (renderErr) {
              console.error(`Error re-rendering edit form for order ${orderId}:`, renderErr);
-              res.redirect(`/orders/${orderId}?error=Update+failed+and+form+could+not+be+reloaded.`);
+             res.redirect(`/orders/${orderId}?error=Update+failed+and+form+could+not+be+reloaded.`);
         }
     } finally {
-        await session.endSession();
+        await session.endSession(); // Always end session
     }
 });
 
 // GET /orders/:id/edit - Show form to edit order items
 router.get('/:id/edit', ensureCanManageOrder, async (req, res) => {
     const orderId = req.params.id;
-    const loggedInUser = res.locals.loggedInUser;
+    const loggedInUser = res.locals.loggedInUser; // Assuming global middleware sets this
     console.log(`--- Accessing GET /orders/${orderId}/edit ---`);
 
     try {
@@ -603,118 +618,266 @@ router.get('/:id/edit', ensureCanManageOrder, async (req, res) => {
             .populate({
                 path: 'orderItems.itemId',
                 model: 'Item',
-                select: 'name sku price quantity warehouseId' // Need quantity for stock check info
+                select: 'name sku sellingPrice quantity warehouseId' // Need quantity for stock info, warehouseId
             })
             .populate('storeId', 'storeName companyId') // Need company for item filtering
-            .populate('warehouseId', 'name') // Need fulfilling warehouse name
-            .lean(); // Use lean for easier manipulation
+            .populate('warehouseId', 'name _id') // Need fulfilling warehouse ID and name
+            .lean(); // Use lean for easier manipulation in template
 
         if (!orderToEdit) {
             throw new Error("Order not found.");
         }
 
-        // **Authorization**: Double-check management permission (redundant if ensureCanManageOrder is solid)
-        // const hasAccess = await canAccessStoreData(loggedInUser, orderToEdit.storeId?._id);
-        // if(!hasAccess && loggedInUser.role !== 'admin') { throw new Error("Permission denied."); }
-
         // **Status Check**: Prevent editing shipped/delivered/cancelled orders
         if (!['pending', 'confirmed'].includes(orderToEdit.orderStatus)) {
-             console.log(`Order ${orderId} has status ${orderToEdit.orderStatus}, editing not allowed.`);
-             // Redirect back with a message using flash or query param
              return res.redirect(`/orders/${orderId}?error=Cannot+edit+order+with+status:+${orderToEdit.orderStatus}`);
         }
+        
+        // **Authorization Check**: Ensure user can manage THIS order (already done by middleware)
 
-        // Fetch available items for dropdowns - SCOPED TO THE ORDER'S COMPANY
-        let itemQuery = {};
-        const orderCompanyId = orderToEdit.storeId?.companyId;
-        if(orderCompanyId){
-             const companyWarehouses = await Warehouse.find({ companyId: orderCompanyId }).select('_id').lean();
-             itemQuery.warehouseId = { $in: companyWarehouses.map(w => w._id) };
-        } else if (loggedInUser.role !== 'admin') {
-             throw new Error("Cannot determine company to fetch items for.");
+        // Fetch available items for dropdowns - SCOPED TO THE ORDER'S WAREHOUSE
+        if (!orderToEdit.warehouseId?._id) {
+            throw new Error("Order is missing its fulfilling warehouse ID.");
         }
-        // Fetch all items the user *could* add
-        const availableItems = await Item.find(itemQuery)
-            .select('name sku price _id quantity warehouseId')
-            .populate('warehouseId', 'name')
+        
+        console.log(`Workspaceing items available in warehouse: ${orderToEdit.warehouseId._id}`);
+        const availableItems = await Item.find({ 
+                warehouseId: orderToEdit.warehouseId._id,
+                // Optionally add isActive: true if you have that on items
+            })
+            .select('name sku sellingPrice _id quantity warehouseId') // Select needed fields
+            .populate('warehouseId', 'name') // Although redundant here, might be useful if displaying warehouse
             .lean();
+        console.log(`Found ${availableItems.length} available items for adding.`);
 
-
-        res.render('orders/edit_form', { // Render views/orders/edit_form.ejs
+        res.render('orders/edit_form', { 
             title: `Edit Order - ${orderId.toString().slice(-8)}`,
-            order: orderToEdit,
-            items: availableItems, // Pass available items for adding new ones
+            order: orderToEdit,         // Original order data
+            formData: orderToEdit,      // Pre-fill form data with original order initially
+            items: availableItems,      // Pass ONLY items available in the order's warehouse
+            isEditing: true,            // Flag for the view
             layout: './layouts/dashboard_layout'
         });
         console.log("Rendered order edit form.");
 
     } catch (err) {
         console.error(`Error loading order edit form for ID ${orderId}:`, err);
-        res.status(500).render('error_page', { title: "Error", message: `Failed to load order edit form: ${err.message}`, layout: false });
+        // Redirect back to order details with error
+        res.redirect(`/orders/${orderId}?error=${encodeURIComponent(`Failed to load edit form: ${err.message}`)}`);
+        // Or render an error page:
+        // res.status(500).render('error_page', { title: "Error", message: `Failed to load order edit form: ${err.message}`, layout: false });
     }
 });
 
-// Helper function for stock operations (modified to always use session)
+// Helper function for stock operations
 async function updateStockForOrderItems(orderItems, warehouseId, operation, session) {
     console.log(`[StockHelper] Starting stock operation: ${operation} for warehouse ${warehouseId}`);
     const stockUpdates = [];
     for (const orderItem of orderItems) {
-        // Ensure itemDoc is the actual item document or just its ID to be fetched.
-        // If orderItem.itemId is just an ID, you might need to fetch the item's current stock first.
-        // For deduction, a pre-check is good, but the update itself needs to be atomic.
-        
         let itemIdToUpdate;
         let itemNameToLog = 'Unknown Item';
         let itemSkuToLog = 'N/A';
+        const quantityToAdjust = orderItem.quantity; // This is the amount to add/subtract
 
-        if (orderItem.itemId && orderItem.itemId._id) { // If itemId is a populated object
+        if (!quantityToAdjust || quantityToAdjust <= 0) {
+             console.warn("[StockHelper] Skipping item with zero or negative quantity adjustment:", orderItem);
+             continue; // Skip if quantity is not positive
+        }
+
+        // Determine Item ID and log details
+        if (orderItem.itemId && orderItem.itemId._id) { 
             itemIdToUpdate = orderItem.itemId._id;
             itemNameToLog = orderItem.itemId.name;
             itemSkuToLog = orderItem.itemId.sku;
-        } else if (mongoose.Types.ObjectId.isValid(orderItem.itemId)) { // If itemId is just an ID
+        } else if (mongoose.Types.ObjectId.isValid(orderItem.itemId)) { 
             itemIdToUpdate = orderItem.itemId;
-            // Fetch item details for logging and potentially for the pre-check inside transaction
-            const tempItem = await Item.findById(itemIdToUpdate).select('name sku').lean().session(session); // Use session if fetching inside transaction
-            if(tempItem) {
-                itemNameToLog = tempItem.name;
-                itemSkuToLog = tempItem.sku;
-            }
+            const tempItem = await Item.findById(itemIdToUpdate).select('name sku').lean().session(session); 
+            if(tempItem) { itemNameToLog = tempItem.name; itemSkuToLog = tempItem.sku; }
         } else {
-            throw new Error(`Invalid item data in order for stock adjustment. Item ID: ${orderItem.itemId}`);
+            throw new Error(`Invalid item data for stock adjustment. Item ID: ${orderItem.itemId}`);
         }
 
-        const quantityToAdjust = orderItem.quantity;
         let stockChange;
-
         if (operation === 'deduct') {
             stockChange = -quantityToAdjust;
-            // Check current stock *within the transaction* just before update for maximum safety
             const currentItemInDB = await Item.findOne({ _id: itemIdToUpdate, warehouseId: warehouseId }).session(session);
-            if (!currentItemInDB) {
-                 throw new Error(`Item ${itemNameToLog} (SKU: ${itemSkuToLog}, ID: ${itemIdToUpdate}) not found in warehouse ${warehouseId} for stock deduction.`);
-            }
-            if (currentItemInDB.quantity < quantityToAdjust) {
-                throw new Error(`Insufficient stock for item ${itemNameToLog} (SKU: ${itemSkuToLog}) during final deduction. Available: ${currentItemInDB.quantity}, Needed: ${quantityToAdjust}.`);
-            }
+            if (!currentItemInDB) throw new Error(`Item ${itemNameToLog} (ID: ${itemIdToUpdate}) not found in warehouse ${warehouseId} for stock deduction.`);
+            if (currentItemInDB.quantity < quantityToAdjust) throw new Error(`Insufficient stock for ${itemNameToLog} (SKU: ${itemSkuToLog}). Available: ${currentItemInDB.quantity}, Needed: ${quantityToAdjust}.`);
         } else if (operation === 'restore') {
             stockChange = +quantityToAdjust;
         } else {
-            throw new Error("Invalid stock operation type specified.");
+            throw new Error("Invalid stock operation type.");
         }
 
-        console.log(`[StockHelper] Preparing to adjust stock for Item ${itemIdToUpdate} (SKU: ${itemSkuToLog}) in Warehouse ${warehouseId} by ${stockChange}`);
+        console.log(`[StockHelper] Preparing stock update for Item ${itemIdToUpdate} (SKU: ${itemSkuToLog}) by ${stockChange}`);
         stockUpdates.push(
             Item.updateOne(
                 { _id: itemIdToUpdate, warehouseId: warehouseId },
                 { $inc: { quantity: stockChange }, $set: { lastUpdated: new Date() } },
-                { session } // Pass session here
+                { session } // Pass session
             )
         );
     }
-    await Promise.all(stockUpdates); // Execute all updates
-    console.log(`[StockHelper] Stock adjustments (${operation}) successful for order items.`);
+    await Promise.all(stockUpdates);
+    console.log(`[StockHelper] Stock adjustments (${operation}) successful for ${stockUpdates.length} item types.`);
 }
 
+// *** NEW: PUT /orders/:id - Update Order Details & Items ***
+router.put('/:id', ensureCanManageOrder, async (req, res) => {
+    const orderId = req.params.id;
+    const loggedInUser = res.locals.loggedInUser;
+    console.log(`--- Attempting UPDATE for order ${orderId} ---`);
+    console.log("Received PUT /orders/:id body:", JSON.stringify(req.body, null, 2));
+
+    const { customerName, customerPhone, itemIds, quantities } = req.body;
+    // storeId and warehouseId are generally not changed during edit
+
+    const session = await mongoose.startSession(); // Start transaction session
+
+    try {
+        let finalUpdatedOrder = null;
+
+        await session.withTransaction(async () => { // Use withTransaction for auto commit/abort
+            
+            // 1. Fetch original order (need populated items for comparison)
+            const originalOrder = await Order.findById(orderId)
+                                        .populate('orderItems.itemId', 'name sku sellingPrice') // Populate needed fields
+                                        .session(session); 
+            if (!originalOrder) throw new Error("Order not found.");
+            if (!['pending', 'confirmed'].includes(originalOrder.orderStatus)) {
+                 throw new Error(`Cannot edit order with status: ${originalOrder.orderStatus}`);
+            }
+            const warehouseId = originalOrder.warehouseId; // Immutable warehouse ID
+
+            // 2. Basic Validation
+            if (!customerName || !itemIds || !quantities) throw new Error("Missing required fields.");
+            const validNewItemIds = Array.isArray(itemIds) ? itemIds.filter(id => id && mongoose.Types.ObjectId.isValid(id)) : [];
+            const validNewQuantities = Array.isArray(quantities) ? quantities.map(qty => parseInt(qty, 10)).filter((qty, i) => itemIds[i] && qty > 0) : [];
+            if (validNewItemIds.length !== validNewQuantities.length || validNewItemIds.length === 0) {
+                throw new Error("Invalid item/quantity pairs or no items selected.");
+            }
+
+            // 3. Map original and new items
+            const originalItemsMap = new Map(originalOrder.orderItems.map(item => [item.itemId._id.toString(), item.quantity]));
+            const newItemsMap = new Map();
+            validNewItemIds.forEach((id, index) => { newItemsMap.set(id, (newItemsMap.get(id) || 0) + validNewQuantities[index]); });
+
+            // 4. Calculate stock adjustments needed
+            const stockAdjustmentsToMake = []; // { itemId: ..., quantity: +ve (restore), -ve (deduct) }
+            
+            // Calculate restorations (original had more than new, or item removed)
+            originalItemsMap.forEach((origQty, itemIdStr) => {
+                const newQty = newItemsMap.get(itemIdStr) || 0;
+                if (newQty < origQty) {
+                    stockAdjustmentsToMake.push({ itemId: itemIdStr, quantity: origQty - newQty, operation: 'restore' });
+                }
+            });
+
+            // Calculate deductions needed (new item, or quantity increased)
+            const itemsToCheckStock = []; // { itemId, quantity (amount of increase/new qty), name, sku }
+            for (const [itemIdStr, newQty] of newItemsMap.entries()) {
+                const originalQty = originalItemsMap.get(itemIdStr) || 0;
+                if (newQty > originalQty) {
+                    itemsToCheckStock.push({ itemId: itemIdStr, quantity: newQty - originalQty });
+                } else if (!originalItemsMap.has(itemIdStr)) { // Completely new item
+                    itemsToCheckStock.push({ itemId: itemIdStr, quantity: newQty });
+                }
+            }
+
+            // 5. Perform stock checks *before* any updates
+            if (itemsToCheckStock.length > 0) {
+                console.log("[Order Edit] Checking stock for deductions...");
+                const itemIdsToCheck = itemsToCheckStock.map(i => i.itemId);
+                const currentStockItems = await Item.find({ _id: { $in: itemIdsToCheck }, warehouseId: warehouseId })
+                                                    .select('_id quantity name sku')
+                                                    .session(session);
+                const currentStockMap = new Map(currentStockItems.map(i => [i._id.toString(), i]));
+
+                for (const itemToDeduct of itemsToCheckStock) {
+                    const stockInfo = currentStockMap.get(itemToDeduct.itemId);
+                    if (!stockInfo) throw new Error(`Item (${itemToDeduct.itemId}) not found in warehouse ${warehouseId}.`);
+                    if (stockInfo.quantity < itemToDeduct.quantity) {
+                        throw new Error(`Insufficient stock for ${stockInfo.name} (SKU: ${stockInfo.sku}). Available: ${stockInfo.quantity}, Need to Deduct: ${itemToDeduct.quantity}.`);
+                    }
+                    // Add to adjustments if stock is OK
+                    stockAdjustmentsToMake.push({ itemId: itemToDeduct.itemId, quantity: -itemToDeduct.quantity, operation: 'deduct' });
+                }
+                console.log("[Order Edit] Stock checks passed.");
+            }
+
+            // 6. Execute ALL stock adjustments
+            if (stockAdjustmentsToMake.length > 0) {
+                 console.log("[Order Edit] Applying stock adjustments:", stockAdjustmentsToMake);
+                 const updatePromises = stockAdjustmentsToMake.map(adj => 
+                     Item.updateOne(
+                         { _id: adj.itemId, warehouseId: warehouseId },
+                         { $inc: { quantity: adj.quantity }, $set: { lastUpdated: new Date() } },
+                         { session }
+                     )
+                 );
+                 await Promise.all(updatePromises);
+                 console.log("[Order Edit] Stock adjustments applied.");
+            }
+
+            // 7. Prepare final order items array and recalculate total
+            let finalTotalAmount = 0;
+            const finalOrderItems = [];
+            const finalItemDetails = await Item.find({ _id: { $in: Array.from(newItemsMap.keys()) } })
+                                            .select('sellingPrice') // Only need selling price now
+                                            .session(session).lean();
+            const finalPriceMap = new Map(finalItemDetails.map(i => [i._id.toString(), i.sellingPrice]));
+
+            for (const [itemIdStr, finalQty] of newItemsMap.entries()) {
+                const price = finalPriceMap.get(itemIdStr);
+                if (typeof price !== 'number') throw new Error(`Could not get price for item ${itemIdStr}.`);
+                finalOrderItems.push({ itemId: itemIdStr, quantity: finalQty, priceAtOrder: price });
+                finalTotalAmount += finalQty * price;
+            }
+             if (isNaN(finalTotalAmount)) throw new Error("Recalculated total amount is invalid.");
+
+
+            // 8. Update Order Document
+            originalOrder.customerName = customerName;
+            originalOrder.customerPhone = customerPhone;
+            originalOrder.orderItems = finalOrderItems;
+            originalOrder.totalAmount = finalTotalAmount;
+            originalOrder.updatedDate = new Date();
+            originalOrder.lastUpdatedBy = loggedInUser._id;
+            
+            finalUpdatedOrder = await originalOrder.save({ session });
+            console.log(`Order ${orderId} updated successfully within transaction.`);
+            
+        }); // Transaction commits here
+
+        // Redirect after successful transaction
+        res.redirect(`/orders/${orderId}?success=Order+updated+successfully`);
+
+    } catch (err) {
+        console.error(`Error updating order ${orderId}:`, err);
+        // Re-fetch data needed to render edit form again on error
+        try {
+            const orderForForm = await Order.findById(orderId).populate('orderItems.itemId').populate('storeId').populate('warehouseId').lean();
+            const itemsForForm = orderForForm?.warehouseId?._id 
+                ? await Item.find({ warehouseId: orderForForm.warehouseId._id }).populate('warehouseId').lean() 
+                : []; 
+
+            res.status(400).render('orders/edit_form', {
+                title: `Edit Order - ${orderId.toString().slice(-8)}`, 
+                order: orderForForm || { _id: orderId }, 
+                formData: req.body, // Show the data that caused the error
+                items: itemsForForm,
+                isEditing: true,
+                error: `Update failed: ${err.message}`,
+                layout: './layouts/dashboard_layout'
+            });
+        } catch (renderErr) {
+             console.error(`Error re-rendering edit form for order ${orderId}:`, renderErr);
+             res.redirect(`/orders/${orderId}?error=Update+failed+and+form+could+not+be+reloaded.`);
+        }
+    } finally {
+        await session.endSession(); // Always end session
+    }
+});
 
 // PUT /orders/:id/status - Update Order Status (WITH TRANSACTION)
 router.put('/:id/status', ensureCanManageOrder, async (req, res) => {
@@ -913,8 +1076,5 @@ router.get('/:id/invoice/pdf', ensureAuthenticated, async (req, res) => { // ens
         res.status(500).send(`Error generating invoice: ${err.message}`);
     }
 });
-
-
-// --- TODO: Add route for updating status (PUT /orders/:id/status) ---
 
 module.exports = router;

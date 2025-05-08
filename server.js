@@ -121,7 +121,7 @@ app.use(async (req, res, next) => {
   next(); // Proceed to the next middleware/route
 });
 // --- End Global Middleware ---
-
+app.use(methodOverride('_method'));
 // --- Route Mounting ---
 app.use('/', indexRoutes);       // Handles /, /dashboard, /login, /logout, /register
 app.use('/stores', storeRoutes); // Handles /stores, /stores/new etc.
@@ -133,7 +133,7 @@ app.use('/items', itemRoutes);
 app.use('/orders', orderRoutes);
 app.use('/reporting', reportingRoutes);
 app.use('/admin', adminRoutes);
-app.use(methodOverride('_method'));
+
 // --- Basic 404 Handler ---
 // Catch requests that don't match any routes above
 app.use((req, res, next) => {
