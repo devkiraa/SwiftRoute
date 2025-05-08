@@ -72,53 +72,42 @@ app.use(session({
 }));
 
 // --- Global Middleware for User/Company/Path ---
-// Makes loggedInUser, companyDetails, and currentPath available in all templates (via res.locals)
+// --- Global Middleware (Make user and other locals available to views) ---
 app.use(async (req, res, next) => {
-  res.locals.currentPath = req.path; // For active sidebar links
-  // Initialize locals to null
-  res.locals.loggedInUser = null;
+  res.locals.loggedInUser = null; // Initialize defaults
   res.locals.companyDetails = null;
-  res.locals.storeDetails = null; // <-- Initialize storeDetails
+  res.locals.storeDetails = null;
 
   if (req.session && req.session.userId) {
-    try {
-      const user = await mongoose.model('User').findById(req.session.userId)
-        .populate('companyId', 'companyName') // Populate company name
-        .lean();
-
-      if (user) {
-        res.locals.loggedInUser = user;
-        res.locals.companyDetails = user.companyId; // Populated company or null
-
-        // --- Attempt to fetch store details if user has storeId ---
-        if (user.storeId) {
-          try {
-             // Fetch store details if the user is associated with one
-             res.locals.storeDetails = await mongoose.model('Store')
-                                              .findById(user.storeId)
-                                              .select('storeName address') // Select fields needed globally
-                                              .lean();
-          } catch (storeErr) {
-               console.error(`Error fetching store details for storeId ${user.storeId}:`, storeErr);
-               // Proceed without storeDetails if store fetch fails
-               res.locals.storeDetails = null;
+      try {
+          // Populate the FULL company document or select specific fields needed globally
+          const user = await mongoose.model('User').findById(req.session.userId)
+              // OPTION 1: Populate fully (simpler if you need more company fields later)
+              .populate('companyId') 
+              // OPTION 2: Select specific fields needed globally
+              // .populate('companyId', 'companyName upiId mobileNumber contactEmail') // Select name AND upiId etc.
+              .populate('storeId', 'storeName') // Keep this as is if only name needed
+              .lean(); 
+              
+          res.locals.loggedInUser = user;
+          if (user) {
+              // Now user.companyId (and thus locals.companyDetails) will have the upiId field
+              res.locals.companyDetails = user.companyId; 
+              res.locals.storeDetails = user.storeId;   
           }
-        }
-        // --- End store details fetch ---
-
-      } else {
-         console.warn(`Session has userId ${req.session.userId}, but user not found. Clearing session.`);
-         req.session.destroy(); // Logged out
+      } catch (error) { 
+          console.error('Error fetching user/company for session:', error);
       }
-    } catch (err) {
-      console.error("Error fetching user/company in global middleware:", err);
-      // Ensure locals are null on error
-      res.locals.loggedInUser = null;
-      res.locals.companyDetails = null;
-      res.locals.storeDetails = null;
-    }
-  }
-  next(); // Proceed to the next middleware/route
+  } 
+
+  // --- Message Handling (Using Query Params - Keep from Response #75) ---
+  // Note: If you ever switch to flash, this part changes.
+  res.locals.success_msg = req.query.success ? decodeURIComponent(req.query.success.replace(/\+/g, ' ')) : null;
+  res.locals.error_msg = req.query.error ? decodeURIComponent(req.query.error.replace(/\+/g, ' ')) : null;
+  // --- End Message Handling ---
+
+  res.locals.currentPath = req.path; 
+  next();
 });
 // --- End Global Middleware ---
 app.use(methodOverride('_method'));
