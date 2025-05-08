@@ -8,6 +8,7 @@ const Store = require('../models/Store');
 const Item = require('../models/Item');
 const Vehicle = require('../models/Vehicle');
 const FuelLog = require('../models/FuelLog');
+const TripLog = require('../models/TripLog');
 const Warehouse = require('../models/Warehouse');
 
 const router = express.Router();
@@ -25,7 +26,8 @@ function ensureDeliveryPartner(req, res, next) {
 router.use(ensureAuthenticated, ensureDeliveryPartner);
 // --- End Local Auth Middleware ---
 
-// GET /deliveries/my - Show Aggregated Loading List, Individual Orders, and Vehicle Selection
+// --- GET /deliveries/my --- 
+// Shows current vehicle/trip status, loading list for pickup, and orders in progress.
 router.get('/my', async (req, res) => {
     console.log("--- Accessing GET /deliveries/my ---");
     const loggedInUser = res.locals.loggedInUser;
@@ -36,64 +38,302 @@ router.get('/my', async (req, res) => {
     let showPickupButton = false;
     let availableVehicles = [];
     let currentVehicle = null;
+    let activeTrip = null;
+    let aggregationErrorMsg = null; // Potential error message for aggregation
 
     try {
+        // 1. Ensure driver is linked to a company
         if (!loggedInUser.companyId) {
             throw new Error("Delivery partner is not associated with a company.");
         }
+        const companyId = loggedInUser.companyId._id || loggedInUser.companyId; // Ensure we have the ID
 
-        // Fetch current vehicle if assigned to user
+        // 2. Fetch current vehicle and active trip status
         if (loggedInUser.currentVehicleId) {
-            currentVehicle = await Vehicle.findById(loggedInUser.currentVehicleId).lean();
-        }
-
-        // Fetch available vehicles for selection if no vehicle is currently selected by the user
+            currentVehicle = await Vehicle.findById(loggedInUser.currentVehicleId)
+                                          .select('vehicleNumber modelName type currentOdometer') 
+                                          .lean();
+            if (currentVehicle) {
+                activeTrip = await TripLog.findOne({
+                    driverId: loggedInUser._id,
+                    vehicleId: currentVehicle._id,
+                    status: 'active' 
+                }).sort({ tripStartDate: -1 }).lean();
+                console.log(`Active Trip Found for Vehicle ${currentVehicle.vehicleNumber}:`, activeTrip ? activeTrip._id : 'None');
+            } else {
+                // Vehicle ID exists on user but vehicle not found (maybe deleted?) - clear it
+                console.warn(`Clearing non-existent currentVehicleId ${loggedInUser.currentVehicleId} for user ${loggedInUser._id}`);
+                await User.findByIdAndUpdate(loggedInUser._id, { currentVehicleId: null });
+                // Refresh loggedInUser in locals? Not straightforward without re-querying or session update
+                 res.locals.loggedInUser.currentVehicleId = null; // Update locals for this request at least
+            }
+        } 
+        
+        // 3. Fetch available vehicles if none currently selected
         if (!currentVehicle) {
             availableVehicles = await Vehicle.find({
-                companyId: loggedInUser.companyId,
+                companyId: companyId, // Use determined companyId
                 isActive: true,
-                assignedDriverId: null // Only show vehicles not currently assigned to anyone
+                assignedDriverId: null 
             }).select('vehicleNumber modelName type').sort({ vehicleNumber: 1 }).lean();
+            console.log(`Found ${availableVehicles.length} available vehicles.`);
         }
         
-        const allAssignedOrders = await Order.find({
+        // 4. Fetch Assigned Orders ('confirmed' for pickup, 'shipped' for in progress)
+        const allAssignedOrders = await Order.find({ 
             assignedDeliveryPartnerId: loggedInUser._id,
-            orderStatus: { $in: ['confirmed', 'shipped'] }
+            orderStatus: { $in: ['confirmed', 'shipped'] } 
         })
-        .populate('warehouseId', 'name location address _id')
-        .populate('storeId', 'storeName')
-        .sort({ placedDate: 1 }).lean();
-        
+        .populate('warehouseId', 'name location address _id') // Populate warehouse for info
+        .populate('storeId', 'storeName') // Populate store for display
+        .populate('orderItems.itemId', 'name sku') // Populate item names for potential display
+        .sort({ placedDate: 1 }) // Or sort based on route optimization later?
+        .lean();
+        console.log(`Found ${allAssignedOrders.length} total active assigned orders.`);
+
         if (allAssignedOrders.length > 0) {
             originWarehouse = allAssignedOrders[0].warehouseId;
-            // ... (rest of your existing logic for ordersForPickup, ordersInProgress, aggregatedItems) ...
-            if (!originWarehouse?._id) { throw new Error("Cannot determine origin warehouse for deliveries."); }
-            const originWarehouseIdString = originWarehouse._id.toString();
-            const allFromSameWarehouse = allAssignedOrders.every(order => order.warehouseId?._id?.toString() === originWarehouseIdString);
-            if (!allFromSameWarehouse) { throw new Error("Deliveries assigned from multiple warehouses."); }
-            
+            // Basic check if all orders are from the same warehouse
+             if (!originWarehouse?._id) { throw new Error("Cannot determine origin warehouse for deliveries."); }
+             const originWarehouseId = originWarehouse._id;
+             const allFromSameWarehouse = allAssignedOrders.every(order => order.warehouseId?._id?.toString() === originWarehouseId.toString());
+             if (!allFromSameWarehouse) { throw new Error("Assigned deliveries originate from multiple warehouses. Please contact dispatch."); }
+             console.log(`All orders originate from warehouse: ${originWarehouse.name}`);
+
             ordersForPickup = allAssignedOrders.filter(o => o.orderStatus === 'confirmed');
             ordersInProgress = allAssignedOrders.filter(o => o.orderStatus === 'shipped');
-            showPickupButton = ordersForPickup.length > 0 && !!currentVehicle; // Can only pickup if vehicle is selected
+            
+            // Show pickup button if there are orders to pick up AND driver has selected a vehicle AND has an active trip
+            showPickupButton = ordersForPickup.length > 0 && !!currentVehicle && !!activeTrip; 
+            console.log(`Orders for pickup: ${ordersForPickup.length}, Orders in progress: ${ordersInProgress.length}, Show pickup button: ${showPickupButton}`);
 
-            if (showPickupButton) { /* ... your aggregation logic ... */ }
+            // 5. Aggregate items ONLY if there are orders for pickup
+            if (ordersForPickup.length > 0) {
+                console.log("Aggregating items for pickup list...");
+                try {
+                    aggregatedItems = await Order.aggregate([
+                        { $match: { 
+                            _id: { $in: ordersForPickup.map(o => o._id) }, 
+                            warehouseId: originWarehouseId // Use the actual ObjectId
+                        }},
+                        { $unwind: "$orderItems" },
+                        { $group: { 
+                            _id: "$orderItems.itemId", 
+                            totalQuantity: { $sum: "$orderItems.quantity" } 
+                        }},
+                        { $match: { _id: { $ne: null } } }, // Ensure itemId wasn't null
+                        { $lookup: { 
+                            from: "items", localField: "_id", foreignField: "_id", 
+                            as: "itemDetails" 
+                        }},
+                        { $unwind: { path: "$itemDetails", preserveNullAndEmptyArrays: true } }, 
+                        { $project: { 
+                            _id: 0, itemId: "$_id", 
+                            name: { $ifNull: [ "$itemDetails.name", "Unknown Item" ] }, 
+                            sku: { $ifNull: [ "$itemDetails.sku", "N/A" ] }, 
+                            neededQuantity: "$totalQuantity" 
+                        }},
+                        { $sort: { name: 1 } }
+                    ]);
+                    console.log(`Aggregation complete. Found ${aggregatedItems.length} unique items for pickup list.`);
+                    if (aggregatedItems.some(item => item.name === 'Unknown Item')) {
+                        console.warn("Warning: Some aggregated items could not be found in the 'items' collection.");
+                    }
+                     if (aggregatedItems.length === 0 && ordersForPickup.length > 0) {
+                         console.warn("Warning: Aggregation resulted in zero items, even though orders were found for pickup. Check match stage or data.");
+                         aggregationErrorMsg = "Could not load item details for pickup list."; // Set specific error
+                    }
+                } catch (aggError) {
+                    console.error("Error during item aggregation:", aggError);
+                    aggregatedItems = []; 
+                    aggregationErrorMsg = "Error loading pickup list details.";
+                }
+            }
         }
 
+        // Pass query param messages OR the aggregation error
+        let displayError = req.query.error ? decodeURIComponent(req.query.error.replace(/\+/g, ' ')) : aggregationErrorMsg; // Prioritize query error
+        let displaySuccess = req.query.success ? decodeURIComponent(req.query.success.replace(/\+/g, ' ')) : null;
+        
         res.render('deliveries/my_deliveries', {
-            title: 'My Deliveries', originWarehouse, aggregatedItems,
-            ordersForPickup, ordersInProgress, showPickupButton,
-            availableVehicles, // Pass available vehicles to the view
-            currentVehicle, 
-            showFuelLogButton: !!currentVehicle,   // Pass currently selected vehicle to the view
-            error: req.query.error, success_msg: req.query.success, 
+            title: 'My Deliveries', 
+            originWarehouse, 
+            aggregatedItems,
+            ordersForPickup, 
+            ordersInProgress, 
+            showPickupButton, // Determines if the pickup list section *could* show actions
+            availableVehicles, 
+            currentVehicle,    
+            activeTrip, 
+            showFuelLogButton: !!currentVehicle, 
+            error_msg: displayError, // Use the consolidated error message
+            success_msg: displaySuccess, 
             layout: './layouts/dashboard_layout'
         });
+
     } catch (err) {
         console.error(`Error in GET /deliveries/my for driver ${loggedInUser?._id}:`, err);
-        res.status(500).render('error_page', { title: "Error", message: `Failed to load deliveries: ${err.message}`, layout: false });
+        // Render error page if main logic fails
+        res.status(500).render('error_page', { 
+            title: "Error", 
+            message: `Failed to load deliveries: ${err.message}`, 
+            layout: './layouts/dashboard_layout' // Use dashboard layout for consistency if possible
+        });
     }
 });
 
+// POST /deliveries/trip/start - Start a new delivery trip
+router.post('/trip/start', async (req, res) => {
+    const loggedInUser = res.locals.loggedInUser;
+    const { startOdometer } = req.body;
+    const vehicleId = loggedInUser.currentVehicleId; // Assumes vehicle is already selected via POST /vehicle/select
+
+    console.log(`--- Driver ${loggedInUser._id} attempting START TRIP with vehicle ${vehicleId}, Odo: ${startOdometer} ---`);
+
+    if (!vehicleId) {
+        return res.redirect('/deliveries/my?error=No+vehicle+selected.+Please+select+a+vehicle+first.');
+    }
+    if (startOdometer === undefined || startOdometer === null || startOdometer === '') {
+         return res.redirect('/deliveries/my?error=Start+Odometer+reading+is+required.');
+    }
+    const startOdoNum = parseFloat(startOdometer);
+     if (isNaN(startOdoNum) || startOdoNum < 0) {
+         return res.redirect('/deliveries/my?error=Invalid+Start+Odometer+reading.');
+     }
+
+
+    const session = await mongoose.startSession();
+    try {
+        let newTrip = null;
+        await session.withTransaction(async () => {
+            // 1. Check if driver already has an active trip
+            const existingActiveTrip = await TripLog.findOne({ 
+                driverId: loggedInUser._id, 
+                status: 'active' 
+            }).session(session);
+
+            if (existingActiveTrip) {
+                 throw new Error(`You already have an active trip started at ${existingActiveTrip.tripStartDate.toLocaleString()}. Please end it first.`);
+            }
+
+            // 2. Get selected vehicle and validate odometer
+            const vehicle = await Vehicle.findById(vehicleId).session(session);
+            if (!vehicle) throw new Error("Selected vehicle not found.");
+            if (vehicle.assignedDriverId?.toString() !== loggedInUser._id.toString()) {
+                 throw new Error("Vehicle is not assigned to you."); // Should not happen if UI is correct
+            }
+            if (startOdoNum < vehicle.currentOdometer) {
+                 throw new Error(`Start Odometer (${startOdoNum}km) cannot be less than vehicle's last known reading (${vehicle.currentOdometer}km).`);
+            }
+             if (!vehicle.isActive) {
+                 throw new Error(`Vehicle ${vehicle.vehicleNumber} is marked as inactive.`);
+             }
+
+            // 3. Find orders to associate with this trip ('confirmed' or 'shipped' assigned to driver)
+             const ordersForThisTrip = await Order.find({
+                 assignedDeliveryPartnerId: loggedInUser._id,
+                 orderStatus: { $in: ['confirmed', 'shipped'] },
+                 // Optionally add criteria like warehouseId matching vehicle's warehouse?
+             }).select('_id').session(session).lean(); // Just get IDs
+
+            // 4. Create the TripLog
+            newTrip = new TripLog({
+                vehicleId: vehicle._id,
+                driverId: loggedInUser._id,
+                companyId: loggedInUser.companyId,
+                tripStartDate: new Date(),
+                startOdometer: startOdoNum,
+                status: 'active',
+                ordersOnTrip: ordersForThisTrip.map(o => o._id)
+            });
+            await newTrip.save({ session });
+            console.log(`New TripLog created: ${newTrip._id}`);
+
+            // 5. Update vehicle's current odometer
+            vehicle.currentOdometer = startOdoNum;
+            vehicle.lastUpdated = new Date();
+            await vehicle.save({ session });
+             console.log(`Vehicle ${vehicleId} odometer updated to ${startOdoNum}`);
+
+        }); // Transaction commits
+
+        res.redirect('/deliveries/my?success=New+trip+started+successfully!');
+
+    } catch (err) {
+        console.error("Error starting trip:", err);
+        res.redirect(`/deliveries/my?error=Failed+to+start+trip:+${err.message}`);
+    } finally {
+        await session.endSession();
+    }
+});
+
+// POST /deliveries/trip/end - End the current active trip
+router.post('/trip/end', async (req, res) => {
+    const loggedInUser = res.locals.loggedInUser;
+    const { endOdometer } = req.body;
+
+    console.log(`--- Driver ${loggedInUser._id} attempting END TRIP, Odo: ${endOdometer} ---`);
+
+    if (endOdometer === undefined || endOdometer === null || endOdometer === '') {
+         return res.redirect('/deliveries/my?error=End+Odometer+reading+is+required.');
+    }
+    const endOdoNum = parseFloat(endOdometer);
+    if (isNaN(endOdoNum) || endOdoNum < 0) {
+         return res.redirect('/deliveries/my?error=Invalid+End+Odometer+reading.');
+    }
+
+    const session = await mongoose.startSession();
+    try {
+        await session.withTransaction(async () => {
+            // 1. Find the active trip for this driver
+            const activeTrip = await TripLog.findOne({ 
+                driverId: loggedInUser._id, 
+                status: 'active' 
+            }).session(session);
+
+            if (!activeTrip) {
+                throw new Error("No active trip found to end.");
+            }
+
+            // 2. Validate odometer reading
+            if (endOdoNum < activeTrip.startOdometer) {
+                 throw new Error(`End Odometer (${endOdoNum}km) cannot be less than the trip start reading (${activeTrip.startOdometer}km).`);
+            }
+
+            // 3. Update TripLog
+            activeTrip.tripEndDate = new Date();
+            activeTrip.endOdometer = endOdoNum;
+            activeTrip.status = 'completed';
+            // Optionally calculate duration/distance here if needed
+            await activeTrip.save({ session });
+            console.log(`TripLog ${activeTrip._id} marked as completed.`);
+
+            // 4. Update Vehicle's Current Odometer
+            // Fetch vehicle again within transaction to be safe
+             const vehicle = await Vehicle.findById(activeTrip.vehicleId).session(session);
+             if (vehicle) {
+                 if (endOdoNum >= vehicle.currentOdometer) { // Update only if greater or equal
+                     vehicle.currentOdometer = endOdoNum;
+                     vehicle.lastUpdated = new Date();
+                     await vehicle.save({ session });
+                     console.log(`Vehicle ${vehicle._id} odometer updated to ${endOdoNum} on trip end.`);
+                 } else {
+                     console.warn(`End odometer ${endOdoNum} is less than vehicle's current ${vehicle.currentOdometer}. Not updating vehicle odo.`);
+                 }
+             } else {
+                 console.warn(`Vehicle ${activeTrip.vehicleId} not found during trip end odometer update.`);
+             }
+        }); // Transaction commits
+
+        res.redirect('/deliveries/my?success=Trip+ended+successfully.');
+
+    } catch (err) {
+        console.error("Error ending trip:", err);
+        res.redirect(`/deliveries/my?error=Failed+to+end+trip:+${err.message}`);
+    } finally {
+        await session.endSession();
+    }
+});
 
 // GET /deliveries/map — OSRM + Nearest-Neighbor Optimization
 router.get('/map', async (req, res) => {

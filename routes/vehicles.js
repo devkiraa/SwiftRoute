@@ -117,8 +117,7 @@ router.post('/', async (req, res) => {
 
         await newVehicle.save();
         console.log(`Vehicle ${newVehicle.vehicleNumber} created for company ${companyId}`);
-        req.flash('success_msg', `Vehicle '${newVehicle.vehicleNumber}' added successfully.`);
-        res.redirect('/vehicles');
+        res.redirect('/vehicles?success=Vehicle+added+successfully');
 
     } catch (err) {
         console.error("Error creating vehicle:", err);
@@ -215,8 +214,7 @@ router.put('/:id', async (req, res) => {
 
         await vehicleToUpdate.save();
         console.log(`Vehicle ${vehicleToUpdate.vehicleNumber} updated.`);
-        req.flash('success_msg', `Vehicle ${vehicleToManage.vehicleNumber} ${statusMsg} successfully.`);
-        res.redirect('/vehicles');
+        res.redirect('/vehicles?success=Vehicle+updated+successfully');
 
     } catch (err) {
         console.error("Error updating vehicle:", err);
@@ -225,8 +223,6 @@ router.put('/:id', async (req, res) => {
         else if (err.message) {errorMessage = err.message;}
 
         // For re-rendering form, pass original vehicle data if possible for context, and req.body as formData
-        req.flash('error_msg', `Failed to update vehicle status: ${err.message}`);
-        res.redirect('/vehicles');
         const vehicleDataForForm = await Vehicle.findById(vehicleId).lean() || { ...req.body, _id: vehicleId }; // Fallback
         res.status(400).render('vehicles/form', {
             title: 'Edit Vehicle', 
