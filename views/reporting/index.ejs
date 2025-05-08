@@ -3,90 +3,137 @@
 <header class="py-3 px-6 border-b border-gray-200 bg-white shadow-sm flex-shrink-0">
     <div class="flex items-center justify-between">
         <h2 class="text-lg font-semibold text-gray-800"><%= locals.pageTitle %></h2>
-        <%# Add Report Filter buttons/forms later (e.g., Date Range) %>
-        <div></div>
+        <div class="space-x-2">
+            <%# CSV Download Button %>
+            <% if (locals.loggedInUser && ['warehouse_owner', 'admin', 'store_owner', 'employee'].includes(locals.loggedInUser.role)) { %>
+                <a href="/reporting/sales-summary/csv" 
+                   class="inline-flex items-center px-3 py-1.5 border border-green-600 text-xs font-medium rounded-md text-green-700 bg-green-50 hover:bg-green-100">
+                    <svg class="-ml-0.5 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                    Download Sales CSV
+                </a>
+            <% } %>
+             <%# TODO: Add Date Range Filters Here %>
+        </div>
     </div>
 </header>
 
 <section class="p-6 flex-1 overflow-y-auto space-y-6">
-    <% if (typeof reportData !== 'undefined' && reportData) { %>
-
-        <%# --- Warehouse Owner / Admin Reports --- %>
-        <% if (['warehouse_owner', 'admin'].includes(reportData.type)) { %>
-            <div class="bg-white border rounded-lg shadow-sm p-4">
-                <h3 class="text-base font-semibold text-gray-700 mb-3">Sales Summary</h3>
-                <dl class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
-                    <div class="sm:col-span-1">
-                        <dt class="text-sm font-medium text-gray-500">Total Revenue (Delivered)</dt>
-                        <dd class="mt-1 text-xl font-semibold text-gray-900">₹<%= reportData.totalRevenue?.toFixed(2) || '0.00' %></dd> <%# Add currency symbol %>
-                    </div>
-                     <%# Add more sales metrics: Avg order value etc. %>
-                </dl>
-            </div>
-
-             <div class="bg-white border rounded-lg shadow-sm p-4">
-                <h3 class="text-base font-semibold text-gray-700 mb-3">Orders by Status</h3>
-                <% if (reportData.orderStatusCounts && reportData.orderStatusCounts.length > 0) { %>
-                    <ul class="space-y-2">
-                        <% reportData.orderStatusCounts.forEach(status => { %>
-                            <li class="flex justify-between text-sm">
-                                <span class="capitalize font-medium text-gray-600"><%= status._id %>:</span>
-                                <span class="font-semibold text-gray-800"><%= status.count %></span>
-                            </li>
-                        <% }) %>
-                    </ul>
-                <% } else { %>
-                     <p class="text-sm text-gray-500">No order data found.</p>
-                <% } %>
-            </div>
-
-             <div class="bg-white border rounded-lg shadow-sm p-4">
-                <h3 class="text-base font-semibold text-gray-700 mb-3">Inventory Summary</h3>
-                <% if (reportData.inventorySummary) { %>
-                     <dl class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-3">
-                         <div class="sm:col-span-1"> <dt class="text-sm font-medium text-gray-500">Total Items</dt> <dd class="mt-1 text-xl font-semibold text-gray-900"><%= reportData.inventorySummary.totalItems %></dd> </div>
-                         <div class="sm:col-span-1"> <dt class="text-sm font-medium text-gray-500">Distinct SKUs</dt> <dd class="mt-1 text-xl font-semibold text-gray-900"><%= reportData.inventorySummary.distinctSKUs %></dd> </div>
-                         <div class="sm:col-span-1"> <dt class="text-sm font-medium text-gray-500">Total Value</dt> <dd class="mt-1 text-xl font-semibold text-gray-900">₹<%= reportData.inventorySummary.totalValue?.toFixed(2) || '0.00' %></dd> </div>
-                          <%# Add Low Stock count later %>
-                     </dl>
-                <% } else { %>
-                    <p class="text-sm text-gray-500">No inventory data found.</p>
-                <% } %>
-            </div>
-            <%# Add Top Items table later %>
-
-        <% } %>
-
-        <%# --- Store Owner / Employee Reports --- %>
-        <% if (['store_owner', 'employee'].includes(reportData.type)) { %>
-             <div class="bg-white border rounded-lg shadow-sm p-4">
-                <h3 class="text-base font-semibold text-gray-700 mb-3">Store Sales</h3>
-                <dl>
-                     <div class="mb-2"> <dt class="text-sm font-medium text-gray-500">Total Revenue (Delivered)</dt> <dd class="mt-1 text-xl font-semibold text-gray-900">₹<%= reportData.totalRevenue?.toFixed(2) || '0.00' %></dd> </div>
-                </dl>
-            </div>
-             <div class="bg-white border rounded-lg shadow-sm p-4">
-                <h3 class="text-base font-semibold text-gray-700 mb-3">Store Orders by Status</h3>
-                <% if (reportData.orderStatusCounts && reportData.orderStatusCounts.length > 0) { %> <ul class="space-y-2"> <% reportData.orderStatusCounts.forEach(status => { %> <li class="flex justify-between text-sm"> <span class="capitalize font-medium text-gray-600"><%= status._id %>:</span> <span class="font-semibold text-gray-800"><%= status.count %></span> </li> <% }) %> </ul> <% } else { %> <p class="text-sm text-gray-500">No order data.</p> <% } %>
-             </div>
-             <div class="bg-white border rounded-lg shadow-sm p-4">
-                <h3 class="text-base font-semibold text-gray-700 mb-3">Store Customers</h3>
-                <dl>
-                    <div class="mb-2"> <dt class="text-sm font-medium text-gray-500">Total Customers</dt> <dd class="mt-1 text-xl font-semibold text-gray-900"><%= reportData.customerCount %></dd> </div>
-                </dl>
-            </div>
-             <%# Add Top selling items for store later %>
-        <% } %>
-
-        <%# --- Delivery Partner Reports --- %>
-        <% if (reportData.type === 'delivery_partner') { %>
-             <div class="bg-white border rounded-lg shadow-sm p-4">
-                 <h3 class="text-base font-semibold text-gray-700 mb-3">My Delivery Summary</h3>
-                 <% if (reportData.deliveryStatusCounts && reportData.deliveryStatusCounts.length > 0) { %> <ul class="space-y-2"> <% reportData.deliveryStatusCounts.forEach(status => { %> <li class="flex justify-between text-sm"> <span class="capitalize font-medium text-gray-600"><%= status._id %>:</span> <span class="font-semibold text-gray-800"><%= status.count %></span> </li> <% }) %> </ul> <% } else { %> <p class="text-sm text-gray-500">No assigned deliveries found.</p> <% } %>
-             </div>
-        <% } %>
-
+    
+    <%# Display Error if reportData itself failed to load %>
+    <% if (typeof reportData === 'undefined' || !reportData) { %>
+        <div class="bg-white border rounded-lg shadow-sm p-6 text-center">
+            <p class="text-red-600 font-semibold">Could not load report data.</p>
+        </div>
     <% } else { %>
-        <p class="text-gray-600">Could not load report data.</p>
-    <% } %>
+
+        <%# Display Backend Error Message if passed within reportData %>
+        <% if (typeof reportData.error === 'string' && reportData.error) { %>
+            <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md relative max-w-4xl mx-auto" role="alert">
+                <strong class="font-bold">Report Error:</strong> 
+                <span class="block sm:inline"><%= reportData.error %></span>
+                 <button type="button" class="absolute top-0 bottom-0 right-0 px-4 py-3" onclick="this.parentElement.remove();">
+                     <span class="text-red-500 text-xl leading-none">&times;</span>
+                 </button>
+            </div>
+        <% } %>
+
+        <%# --- ROLE-BASED REPORT SECTIONS --- %>
+        <%# Logic combined into single EJS block %>
+        <% if (locals.loggedInUser && ['warehouse_owner', 'admin'].includes(locals.loggedInUser.role)) { %>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                
+                <div class="bg-white border rounded-lg shadow-sm p-4">
+                    <h3 class="text-base font-semibold text-gray-700 mb-3">Sales & Profit Summary</h3>
+                    <% if (reportData.salesSummary && reportData.pnlSummary) { %>
+                        <dl class="space-y-2">
+                            <div> <dt class="text-sm font-medium text-gray-500">Total Revenue (Delivered)</dt> <dd class="mt-1 text-xl font-semibold text-gray-900">₹<%= reportData.salesSummary?.totalRevenue?.toFixed(2) || '0.00' %></dd> </div>
+                            <div> <dt class="text-sm font-medium text-gray-500">Total Cost of Goods Sold (COGS)</dt> <dd class="mt-1 text-xl font-semibold text-gray-900">₹<%= reportData.pnlSummary?.totalCOGS?.toFixed(2) || '0.00' %></dd> </div>
+                            <div> <dt class="text-sm font-medium text-green-600">Gross Profit</dt> <dd class="mt-1 text-xl font-semibold text-green-700">₹<%= reportData.pnlSummary?.grossProfit?.toFixed(2) || '0.00' %></dd> </div>
+                        </dl>
+                    <% } else { %><p class="text-sm text-gray-500 italic">Sales data not available.</p><% } %>
+                </div>
+
+                <div class="bg-white border rounded-lg shadow-sm p-4">
+                    <h3 class="text-base font-semibold text-gray-700 mb-3">Orders by Status</h3>
+                    <% if (reportData.orderStatusCounts && reportData.orderStatusCounts.length > 0) { %>
+                        <ul class="space-y-2"> <% reportData.orderStatusCounts.forEach(status => { %> <li class="flex justify-between text-sm"> <span class="capitalize font-medium text-gray-600"><%= status._id %>:</span> <span class="font-semibold text-gray-800"><%= status.count %></span> </li> <% }); %> </ul>
+                    <% } else { %><p class="text-sm text-gray-500 italic">No order data.</p><% } %>
+                </div>
+
+                <div class="bg-white border rounded-lg shadow-sm p-4">
+                    <h3 class="text-base font-semibold text-gray-700 mb-3">Inventory Summary</h3>
+                    <% if (reportData.inventorySummary) { %>
+                        <dl class="space-y-2">
+                            <div> <dt class="text-sm font-medium text-gray-500">Total Stock Quantity</dt> <dd class="mt-1 text-xl font-semibold text-gray-900"><%= reportData.inventorySummary.totalItems %></dd> </div>
+                            <div> <dt class="text-sm font-medium text-gray-500">Distinct SKUs</dt> <dd class="mt-1 text-xl font-semibold text-gray-900"><%= reportData.inventorySummary.distinctSKUs %></dd> </div>
+                            <div> <dt class="text-sm font-medium text-gray-500">Total Inventory Value (at Cost)</dt> <dd class="mt-1 text-xl font-semibold text-gray-900">₹<%= reportData.inventorySummary.totalCostValue?.toFixed(2) || '0.00' %></dd> </div>
+                        </dl>
+                    <% } else { %><p class="text-sm text-gray-500 italic">No inventory data.</p><% } %>
+                </div>
+                
+                <div class="bg-white border rounded-lg shadow-sm p-4">
+                    <h3 class="text-base font-semibold text-gray-700 mb-3">Trip Summary</h3>
+                    <% if (reportData.tripSummary) { %>
+                        <dl class="space-y-2">
+                            <div> <dt class="text-sm font-medium text-gray-500">Total Completed Trips</dt> <dd class="mt-1 text-xl font-semibold text-gray-900"><%= reportData.tripSummary.totalCompletedTrips %></dd> </div>
+                            <div> <dt class="text-sm font-medium text-gray-500">Total Distance Covered</dt> <dd class="mt-1 text-xl font-semibold text-gray-900"><%= reportData.tripSummary.totalDistanceKm %> km</dd> </div>
+                            <div> <dt class="text-sm font-medium text-gray-500">Average Distance per Trip</dt> <dd class="mt-1 text-xl font-semibold text-gray-900"><%= reportData.tripSummary.averageDistanceKm %> km</dd> </div>
+                        </dl>
+                    <% } else { %><p class="text-sm text-gray-500 italic">No trip data found.</p><% } %>
+                </div>
+
+                <div class="bg-white border rounded-lg shadow-sm p-4">
+                    <h3 class="text-base font-semibold text-gray-700 mb-3">Fuel Log Summary</h3>
+                    <% if (reportData.fuelSummary) { %>
+                        <dl class="space-y-2">
+                            <div> <dt class="text-sm font-medium text-gray-500">Total Fuel Logs</dt> <dd class="mt-1 text-xl font-semibold text-gray-900"><%= reportData.fuelSummary.logCount %></dd> </div>
+                            <div> <dt class="text-sm font-medium text-gray-500">Total Fuel Added</dt> <dd class="mt-1 text-xl font-semibold text-gray-900"><%= reportData.fuelSummary.totalFuelLiters %> Liters</dd> </div>
+                            <div> <dt class="text-sm font-medium text-gray-500">Total Fuel Cost</dt> <dd class="mt-1 text-xl font-semibold text-gray-900">₹<%= reportData.fuelSummary.totalFuelCost %></dd> </div>
+                            <div> <dt class="text-sm font-medium text-gray-500">Average Cost / Liter</dt> <dd class="mt-1 text-xl font-semibold text-gray-900">₹<%= reportData.fuelSummary.averageCostPerLiter %></dd> </div>
+                            <%# TODO: Add Fuel Efficiency %>
+                        </dl>
+                    <% } else { %><p class="text-sm text-gray-500 italic">No fuel log data found.</p><% } %>
+                </div>
+
+            </div> <%# End Admin/Owner Grid %>
+        
+        <% } else if (locals.loggedInUser && ['store_owner', 'employee'].includes(locals.loggedInUser.role)) { %>
+             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                 <div class="bg-white border rounded-lg shadow-sm p-4">
+                     <h3 class="text-base font-semibold text-gray-700 mb-3">Store Sales</h3>
+                     <% if(reportData.salesSummary) { %>
+                         <dl> <div class="mb-2"> <dt class="text-sm font-medium text-gray-500">Total Revenue (Delivered)</dt> <dd class="mt-1 text-xl font-semibold text-gray-900">₹<%= reportData.salesSummary?.totalRevenue?.toFixed(2) || '0.00' %></dd> </div> </dl>
+                     <% } else { %><p class="text-sm text-gray-500 italic">Data not available.</p><% } %>
+                 </div>
+                 <div class="bg-white border rounded-lg shadow-sm p-4">
+                     <h3 class="text-base font-semibold text-gray-700 mb-3">Store Orders by Status</h3>
+                     <% if (reportData.orderStatusCounts && reportData.orderStatusCounts.length > 0) { %> <ul class="space-y-2"> <% reportData.orderStatusCounts.forEach(status => { %> <li class="flex justify-between text-sm"> <span class="capitalize font-medium text-gray-600"><%= status._id %>:</span> <span class="font-semibold text-gray-800"><%= status.count %></span> </li> <% }) %> </ul> <% } else { %> <p class="text-sm text-gray-500 italic">No order data.</p> <% } %>
+                 </div>
+                 <div class="bg-white border rounded-lg shadow-sm p-4">
+                     <h3 class="text-base font-semibold text-gray-700 mb-3">Store Customers</h3>
+                      <dl> <div class="mb-2"> <dt class="text-sm font-medium text-gray-500">Total Customers</dt> <dd class="mt-1 text-xl font-semibold text-gray-900"><%= reportData.customerCount || 0 %></dd> </div> </dl>
+                 </div>
+             </div>
+              <%# TODO: Add Top selling items for store later %>
+        <% } else if (locals.loggedInUser && locals.loggedInUser.role === 'delivery_partner') { %>
+             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div class="bg-white border rounded-lg shadow-sm p-4">
+                    <h3 class="text-base font-semibold text-gray-700 mb-3">My Delivery Summary</h3>
+                    <% if (reportData.deliveryStatusCounts && reportData.deliveryStatusCounts.length > 0) { %> 
+                        <ul class="space-y-2"> <% reportData.deliveryStatusCounts.forEach(status => { %> <li class="flex justify-between text-sm"> <span class="capitalize font-medium text-gray-600"><%= status._id %>:</span> <span class="font-semibold text-gray-800"><%= status.count %></span> </li> <% }); %> </ul> 
+                    <% } else { %> 
+                        <p class="text-sm text-gray-500 italic">No assigned deliveries found.</p> 
+                    <% } %>
+                 </div>
+                 <%# TODO: Add Driver-specific Trip/Fuel Summary here (fetch needed in route) %>
+             </div>
+        <% } else { %>
+             <%# Fallback for unexpected roles or if role check fails %>
+             <div class="bg-white border rounded-lg shadow-sm p-6 text-center">
+                 <p class="text-gray-600">No specific report view available for your role (<%= locals.loggedInUser?.role || 'Unknown' %>).</p>
+             </div>
+        <% } %>
+        <%# --- END ROLE-BASED REPORT SECTIONS --- %>
+
+    <% } %> <%# End check for reportData %>
 </section>

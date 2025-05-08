@@ -7,6 +7,8 @@ const Warehouse = require('../models/Warehouse');
 const Item = require('../models/Item');
 const User = require('../models/User');
 const Company = require('../models/Company');
+const TripLog = require('../models/TripLog'); // <-- Add TripLog
+const FuelLog = require('../models/FuelLog'); // <-- Add FuelLog
 
 const router = express.Router();
 
@@ -19,10 +21,21 @@ function ensureAuthenticated(req, res, next) {
 router.use(ensureAuthenticated);
 
 
-// GET /reporting - Display reporting dashboard
+// GET /reporting - Display reporting dashboard based on role
 router.get('/', async (req, res) => {
     const loggedInUser = res.locals.loggedInUser;
-    let reportData = { type: loggedInUser.role, salesSummary: {}, pnlSummary: {} }; // Initialize
+    // Initialize with more detailed structure
+    let reportData = { 
+        type: loggedInUser.role, 
+        salesSummary: {}, 
+        pnlSummary: {}, 
+        orderStatusCounts: [],
+        inventorySummary: {},
+        deliveryStatusCounts: [], // For delivery partner
+        customerCount: 0, // For store owner
+        tripSummary: {}, // <-- NEW: For trip stats
+        fuelSummary: {}  // <-- NEW: For fuel stats
+    }; 
     let viewTitle = 'Reports';
     console.log(`--- Accessing GET /reporting for role: ${loggedInUser.role} ---`);
 
@@ -30,82 +43,90 @@ router.get('/', async (req, res) => {
         const companyId = loggedInUser.companyId?._id || loggedInUser.companyId;
         const storeIdForUser = loggedInUser.storeId?._id || loggedInUser.storeId;
 
-        // --- Date Range (Placeholder for now - implement with date pickers later) ---
-        // Example: const startDate = new Date(new Date().getFullYear(), 0, 1); // Start of year
-        // const endDate = new Date(); // Today
-        // Add { placedDate: { $gte: startDate, $lte: endDate } } to $match stages
+        // --- Date Range (Placeholder) ---
+        // Define startDate, endDate for filtering if needed
 
         switch (loggedInUser.role) {
             case 'warehouse_owner':
             case 'admin':
-                const companyScopeQuery = loggedInUser.role === 'admin' ? {} : { companyId: companyId };
-                const relevantStoreIds = (await Store.find(companyScopeQuery).select('_id').lean()).map(s => s._id);
-                const relevantWarehouseIds = (await Warehouse.find(companyScopeQuery).select('_id').lean()).map(w => w._id);
+                const companyQuery = loggedInUser.role === 'admin' ? {} : { companyId: companyId };
+                // Determine relevant IDs for filtering sub-collections if needed
+                const relevantStoreIds = loggedInUser.role === 'admin' ? null : (await Store.find({ companyId: companyId }).select('_id').lean()).map(s => s._id);
+                const relevantWarehouseIds = loggedInUser.role === 'admin' ? null : (await Warehouse.find({ companyId: companyId }).select('_id').lean()).map(w => w._id);
+                const relevantDriverIds = loggedInUser.role === 'admin' ? null : (await User.find({ companyId: companyId, role: 'delivery_partner' }).select('_id').lean()).map(u => u._id);
 
-                if (relevantStoreIds.length === 0 && loggedInUser.role === 'warehouse_owner') {
-                    console.warn("Warehouse owner has no stores associated with their company.");
-                }
+                // --- Aggregations (Keep existing + Add New) ---
+                const matchCompanyOrders = loggedInUser.role === 'admin' ? {} : { storeId: { $in: relevantStoreIds }};
+                const matchCompanyItems = loggedInUser.role === 'admin' ? {} : { warehouseId: { $in: relevantWarehouseIds }};
+                const matchCompanyTrips = loggedInUser.role === 'admin' ? {} : { companyId: companyId }; // TripLog has companyId
+                const matchCompanyFuel = loggedInUser.role === 'admin' ? {} : { companyId: companyId }; // FuelLog has companyId
 
-                // 1. Order Status Counts
-                reportData.orderStatusCounts = await Order.aggregate([
-                    { $match: { storeId: { $in: relevantStoreIds } } }, // Filter by company's stores
-                    { $group: { _id: '$orderStatus', count: { $sum: 1 } } },
-                    { $sort: { _id: 1 } }
-                ]);
+                // Existing Aggregations (Order Status, Sales, P&L, Inventory)
+                // ... (Keep these pipelines, ensure they use correct filters if needed) ...
+                 reportData.orderStatusCounts = await Order.aggregate([ { $match: matchCompanyOrders }, { $group: { _id: '$orderStatus', count: { $sum: 1 } } }, { $sort: { _id: 1 } } ]);
+                 const totalSalesResult = await Order.aggregate([ { $match: { ...matchCompanyOrders, orderStatus: 'delivered' } }, { $group: { _id: null, totalRevenue: { $sum: '$totalAmount' } } } ]);
+                 reportData.salesSummary.totalRevenue = totalSalesResult[0]?.totalRevenue || 0;
+                 const cogsResult = await Order.aggregate([ { $match: { ...matchCompanyOrders, orderStatus: 'delivered' } }, { $unwind: '$orderItems' }, { $lookup: { from: Item.collection.name, localField: 'orderItems.itemId', foreignField: '_id', as: 'itemDetails' }}, { $unwind: { path: '$itemDetails', preserveNullAndEmptyArrays: true } }, { $group: { _id: null, totalCOGS: { $sum: { $multiply: ['$orderItems.quantity', { $ifNull: ['$itemDetails.unitPrice', 0] }] } } }} ]);
+                 reportData.pnlSummary.totalCOGS = cogsResult[0]?.totalCOGS || 0;
+                 reportData.pnlSummary.grossProfit = reportData.salesSummary.totalRevenue - reportData.pnlSummary.totalCOGS;
+                 const inventoryData = await Item.aggregate([ { $match: matchCompanyItems }, { $group: { _id: null, totalItems: { $sum: '$quantity' }, distinctSKUs: { $addToSet: '$sku'}, totalCostValue: { $sum: { $multiply: ['$quantity', '$unitPrice'] } } }}, { $project: { _id: 0, totalItems: 1, distinctSKUs: { $size: '$distinctSKUs' }, totalCostValue: 1 }} ]);
+                 reportData.inventorySummary = inventoryData[0] || { totalItems: 0, distinctSKUs: 0, totalCostValue: 0 };
 
-                // 2. Total Revenue (from delivered orders)
-                const totalSalesResult = await Order.aggregate([
-                    { $match: { storeId: { $in: relevantStoreIds }, orderStatus: 'delivered' } },
-                    { $group: { _id: null, totalRevenue: { $sum: '$totalAmount' } } }
-                ]);
-                reportData.salesSummary.totalRevenue = totalSalesResult[0]?.totalRevenue || 0;
-
-                // 3. Cost of Goods Sold (COGS) for P&L
-                const cogsResult = await Order.aggregate([
-                    { $match: { storeId: { $in: relevantStoreIds }, orderStatus: 'delivered' } },
-                    { $unwind: '$orderItems' },
-                    { $lookup: { // Get unitPrice from Item model
-                        from: Item.collection.name,
-                        localField: 'orderItems.itemId',
-                        foreignField: '_id',
-                        as: 'itemDetails'
+                // --- NEW: Trip Summary Aggregation ---
+                const tripStats = await TripLog.aggregate([
+                    { $match: { ...matchCompanyTrips, status: 'completed', startOdometer: { $ne: null }, endOdometer: { $ne: null } } }, // Only completed trips with odo readings
+                    { $project: {
+                        distance: { $subtract: ["$endOdometer", "$startOdometer"] } 
                     }},
-                    { $unwind: { path: '$itemDetails', preserveNullAndEmptyArrays: true } }, // Handle if item was deleted
+                    { $match: { distance: { $gte: 0 } } }, // Ensure distance is non-negative
                     { $group: {
                         _id: null,
-                        totalCOGS: { $sum: { $multiply: ['$orderItems.quantity', { $ifNull: ['$itemDetails.unitPrice', 0] }] } } // Use 0 if unitPrice missing
+                        totalTrips: { $sum: 1 },
+                        totalDistanceKm: { $sum: "$distance" }
                     }}
                 ]);
-                reportData.pnlSummary.totalCOGS = cogsResult[0]?.totalCOGS || 0;
-                reportData.pnlSummary.grossProfit = reportData.salesSummary.totalRevenue - reportData.pnlSummary.totalCOGS;
+                 reportData.tripSummary = {
+                     totalCompletedTrips: tripStats[0]?.totalTrips || 0,
+                     totalDistanceKm: tripStats[0]?.totalDistanceKm?.toFixed(1) || 0,
+                 };
+                 if (reportData.tripSummary.totalCompletedTrips > 0) {
+                    reportData.tripSummary.averageDistanceKm = (reportData.tripSummary.totalDistanceKm / reportData.tripSummary.totalCompletedTrips).toFixed(1);
+                 } else {
+                    reportData.tripSummary.averageDistanceKm = 0;
+                 }
+                console.log("Trip Summary:", reportData.tripSummary);
 
 
-                // 4. Inventory Summary (Value based on Unit Cost)
-                const inventoryData = await Item.aggregate([
-                    { $match: { warehouseId: { $in: relevantWarehouseIds } } }, // Items in company's warehouses
-                    { $group: {
-                        _id: null,
-                        totalItems: { $sum: '$quantity' },
-                        distinctSKUs: { $addToSet: '$sku'},
-                        totalCostValue: { $sum: { $multiply: ['$quantity', '$unitPrice'] } }
-                    }},
-                    { $project: { _id: 0, totalItems: 1, distinctSKUs: { $size: '$distinctSKUs' }, totalCostValue: 1 }}
-                ]);
-                reportData.inventorySummary = inventoryData[0] || { totalItems: 0, distinctSKUs: 0, totalCostValue: 0 };
+                // --- NEW: Fuel Log Summary Aggregation ---
+                 const fuelStats = await FuelLog.aggregate([
+                     { $match: matchCompanyFuel }, // Filter by company
+                     { $group: {
+                         _id: null,
+                         totalFuelLiters: { $sum: "$fuelQuantityLiters" },
+                         totalFuelCost: { $sum: "$fuelCostTotalINR" },
+                         logCount: { $sum: 1 }
+                     }}
+                 ]);
+                 reportData.fuelSummary = {
+                     totalFuelLiters: fuelStats[0]?.totalFuelLiters?.toFixed(2) || 0,
+                     totalFuelCost: fuelStats[0]?.totalFuelCost?.toFixed(2) || 0,
+                     logCount: fuelStats[0]?.logCount || 0
+                 };
+                 if (reportData.fuelSummary.totalFuelLiters > 0) {
+                     reportData.fuelSummary.averageCostPerLiter = (reportData.fuelSummary.totalFuelCost / reportData.fuelSummary.totalFuelLiters).toFixed(2);
+                 } else {
+                      reportData.fuelSummary.averageCostPerLiter = 0;
+                 }
+                console.log("Fuel Summary:", reportData.fuelSummary);
 
                 viewTitle = loggedInUser.role === 'admin' ? 'Platform Reports' : 'Company Reports';
                 break;
 
-            // --- Cases for 'store_owner', 'employee', 'delivery_partner' (Keep similar logic as before) ---
+            // --- Cases for 'store_owner', 'employee', 'delivery_partner' (Keep as is or enhance later) ---
             case 'store_owner':
-            case 'employee':
-                // ... (Fetch store-specific data: totalRevenue, orderStatusCounts, customerCount) ...
-                break;
-            case 'delivery_partner':
-                // ... (Fetch deliveryStatusCounts) ...
-                break;
-            default:
-                throw new Error('User role does not have access to reports.');
+            case 'employee': /* ... fetch store specific data ... */ break;
+            case 'delivery_partner': /* ... fetch driver specific data ... */ break;
+            default: throw new Error('User role does not have access to reports.');
         }
 
         res.render('reporting/index', { title: viewTitle, reportData, layout: './layouts/dashboard_layout' });
