@@ -25,7 +25,7 @@ const userRoutes = require('./routes/users');
 const warehouseRoutes = require('./routes/warehouses');
 const itemRoutes = require('./routes/items'); 
 // Require other routes as you create them:
-// const warehouseRoutes = require('./routes/warehouses');
+const companyRoutes = require('./routes/company');
 const vehicleRoutes = require('./routes/vehicles');
 const orderRoutes = require('./routes/orders');
 const reportingRoutes = require('./routes/reporting');
@@ -133,6 +133,7 @@ app.use('/items', itemRoutes);
 app.use('/orders', orderRoutes);
 app.use('/reporting', reportingRoutes);
 app.use('/admin', adminRoutes);
+app.use('/company', companyRoutes); 
 
 // --- Basic 404 Handler ---
 // Catch requests that don't match any routes above
