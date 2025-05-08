@@ -30,139 +30,10 @@
         </div>
     <% } %>
 
-    <div class="bg-white p-4 border rounded-lg shadow-sm">
-        <div class="flex flex-wrap justify-between items-start gap-4">
-            <div> <%# Vehicle Info & Actions Column %>
-                <h3 class="text-base font-semibold text-gray-700 mb-2">Current Vehicle & Trip Status</h3>
-                <% if (currentVehicle) { %>
-                    <%# Vehicle is selected %>
-                    <p class="text-sm text-gray-800 mb-1">
-                        Using: <span class="font-semibold"><%= currentVehicle.vehicleNumber %></span> (<%= currentVehicle.modelName %>)
-                    </p>
-                    <p class="text-xs text-gray-500 mb-3">Last Odometer: <%= currentVehicle.currentOdometer %> km</p>
-                    
-                    <% if (activeTrip) { %>
-                        <%# Trip is ACTIVE %>
-                        <div class="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                            <p class="text-sm font-medium text-blue-800">Trip Active!</p>
-                            <p class="text-xs text-blue-700">Started: <%= new Date(activeTrip.tripStartDate).toLocaleString() %></p>
-                            <p class="text-xs text-blue-700">Start Odometer: <%= activeTrip.startOdometer %> km</p>
-                             <form action="/deliveries/trip/end" method="POST" class="mt-2">
-                                 <label for="endOdometer" class="block text-xs font-medium text-gray-700 mb-1">End Odometer (km) <span class="text-red-500">*</span></label>
-                                 <div class="flex items-center space-x-2">
-                                    <input type="number" id="endOdometer" name="endOdometer" placeholder="Current Reading" required min="<%= activeTrip.startOdometer %>" 
-                                           class="px-2 py-1 border border-gray-300 rounded text-xs w-32">
-                                    <button type="submit" class="px-3 py-1 bg-red-500 text-white text-xs font-medium rounded-md hover:bg-red-600">End Trip</button>
-                                 </div>
-                             </form>
-                        </div>
-                        <%# Release vehicle while trip active? Maybe disallow or show warning? %>
-                        <p class="text-xs text-gray-500 italic">(Release vehicle disabled while trip is active. Please end the trip first.)</p>
-
-                    <% } else { %>
-                        <%# Vehicle selected, NO active trip - Show Start Trip Form %>
-                        <form action="/deliveries/trip/start" method="POST" class="mt-3 space-y-2 p-3 bg-green-50 border border-green-200 rounded-md">
-                            <label for="startOdometer" class="block text-sm font-medium text-green-800">Start New Trip?</label>
-                            <div class="flex items-center space-x-2">
-                                <input type="number" id="startOdometer" name="startOdometer" 
-                                       required min="<%= currentVehicle.currentOdometer %>" 
-                                       value="<%= currentVehicle.currentOdometer %>" 
-                                       class="block w-32 px-3 py-1.5 border border-gray-300 rounded-md shadow-sm sm:text-sm" 
-                                       placeholder="Start Odo (km)">
-                                <button type="submit" class="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-md hover:bg-green-700">Start Trip</button>
-                            </div>
-                            <p class="text-xs text-gray-500">Enter current odometer reading to begin.</p>
-                        </form>
-                        <form action="/deliveries/vehicle/release" method="POST" class="inline mt-2">
-                           <button type="submit" class="px-3 py-1.5 bg-yellow-500 text-white text-xs font-medium rounded-md hover:bg-yellow-600" title="Release vehicle without starting trip"> Release Vehicle </button>
-                       </form>
-                    <% } %>
-
-                <% } else if (availableVehicles && availableVehicles.length > 0) { %>
-                    <%# No vehicle selected, but available ones exist %>
-                    <form action="/deliveries/vehicle/select" method="POST" class="space-y-2">
-                         <div>
-                             <label for="vehicleId" class="block text-sm font-medium text-gray-700">Select Available Vehicle:</label>
-                             <select name="vehicleId" id="vehicleId" required class="mt-1 block w-full max-w-xs px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                                 <option value="">-- Choose Vehicle --</option>
-                                 <% availableVehicles.forEach(v => { %>
-                                     <option value="<%= v._id %>"><%= v.vehicleNumber %> - <%= v.modelName %></option>
-                                 <% }); %>
-                             </select>
-                         </div>
-                         <button type="submit" class="px-3 py-2 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700">Select Vehicle</button>
-                    </form>
-                <% } else { %>
-                    <%# No vehicle selected AND none available %>
-                    <p class="text-sm text-red-600 italic">No vehicle selected & none available!</p>
-                    <p class="text-xs text-gray-500 mt-1">Cannot start deliveries or log fuel.</p>
-                <% } %>
-            </div>
-            <%# Fuel Log Button - Show only if a vehicle is selected %>
-            <% if (currentVehicle) { %> 
-                <a href="/deliveries/vehicle/fuel-log/new" class="inline-block flex-shrink-0 px-3 py-1.5 bg-purple-600 text-white text-xs font-medium rounded-md hover:bg-purple-700 self-start mt-2 sm:mt-0">
-                    Log Fuel Entry
-                </a>
-            <% } %>
-        </div>
-    </div>
-    <div class="bg-white border rounded-lg shadow-sm">
-        <div class="px-4 py-3 border-b bg-gray-50 rounded-t-lg">
-            <h3 class="text-base font-semibold text-gray-700">
-                Loading List for Pickup (<%= ordersForPickup ? ordersForPickup.length : 0 %> Orders)
-            </h3>
-            <% if (originWarehouse) { %><p class="text-xs text-gray-500">From: <%= originWarehouse.name %></p><% } %>
-        </div>
-
-        <div class="overflow-x-auto">
-            <table class="w-full text-left">
-                <thead class="border-b text-xs uppercase text-gray-500 tracking-wider">
-                    <tr>
-                        <th class="px-4 py-2 font-medium">SKU</th>
-                        <th class="px-4 py-2 font-medium">Item Name</th>
-                        <th class="px-4 py-2 font-medium text-right">Quantity Needed</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y text-sm text-gray-700">
-                    <% if (showPickupButton && aggregatedItems && aggregatedItems.length > 0) { %>
-                        <% aggregatedItems.forEach(item => { %>
-                            <tr class="hover:bg-gray-50">
-                                <td class="px-4 py-2 font-mono text-xs"><%= item.sku %></td>
-                                <td class="px-4 py-2 font-medium text-gray-900"><%= item.name %></td>
-                                <td class="px-4 py-2 font-semibold text-gray-800 text-right"><%= item.neededQuantity %></td>
-                            </tr>
-                        <% }); %>
-                    <% } else if (showPickupButton && (!aggregatedItems || aggregatedItems.length === 0)) { %>
-                        <tr><td colspan="3" class="text-center py-4 text-yellow-600">Could not load item details for pickup list.</td></tr>
-                    <% } else { %>
-                        <tr><td colspan="3" class="text-center py-4 text-gray-500">No orders currently awaiting pickup.</td></tr>
-                    <% } %>
-                </tbody>
-            </table>
-        </div>
-        
-        <% if (ordersForPickup && ordersForPickup.length > 0) { %>
-             <div class="p-4 border-t bg-gray-50 rounded-b-lg flex justify-end items-center">
-                  <% if (!currentVehicle) { %>
-                      <p class="text-sm text-red-600 font-medium mr-4">Please select a vehicle to start pickup.</p>
-                  <% } else if (!activeTrip) { %>
-                      <p class="text-sm text-orange-600 font-medium mr-4">Please start a trip to enable pickup.</p>
-                  <% } %>
-                 <form action="/deliveries/batch-pickup" method="POST" onsubmit="return confirm('Confirm all items loaded and mark <%= ordersForPickup.length %> order(s) as picked up? This will deduct stock.');">
-                     <button type="submit" 
-                             class="px-4 py-2 bg-orange-500 text-white text-sm font-semibold rounded-md hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                             <%= !currentVehicle || !activeTrip ? 'disabled' : '' %> <%# Disable if no vehicle OR no active trip %>
-                             title="<%= !currentVehicle ? 'Select a vehicle first' : (!activeTrip ? 'Start a trip first' : 'Confirm pickup and start route') %>"> 
-                         Confirm All Picked Up & Start Route
-                     </button>
-                 </form>
-             </div>
-         <% } %>
-    </div>
     <div class="bg-white border rounded-lg shadow-sm">
         <div class="px-4 py-3 border-b bg-gray-50 rounded-t-lg">
             <h3 class="text-base font-semibold text-gray-700">Deliveries In Progress (<%= ordersInProgress ? ordersInProgress.length : 0 %>)</h3>
-             <p class="text-xs text-gray-500">Orders currently marked as 'Shipped'. Update status upon successful delivery.</p>
+             <p class="text-xs text-gray-500">Orders marked as 'Shipped'. Mark delivered and record payment upon completion.</p>
         </div>
         <div class="overflow-x-auto">
             <table class="w-full text-left">
@@ -172,6 +43,7 @@
                         <th class="px-4 py-2 font-medium">Store</th>
                         <th class="px-4 py-2 font-medium">Recipient</th>
                         <th class="px-4 py-2 font-medium">Address</th>
+                        <th class="px-4 py-2 font-medium text-center">Amount Due</th>
                         <th class="px-4 py-2 font-medium text-center">Actions</th>
                     </tr>
                 </thead>
@@ -183,19 +55,180 @@
                                 <td class="px-4 py-3"><%= order.storeId?.storeName || 'N/A' %></td>
                                 <td class="px-4 py-3"><%= order.customerName || 'N/A' %></td>
                                 <td class="px-4 py-3 text-xs"><%= order.shippingAddress %></td>
-                                <td class="px-4 py-3 whitespace-nowrap text-center">
-                                    <a href="/orders/<%= order._id %>" class="text-blue-600 hover:underline text-xs font-medium mr-3" title="View Order Details">Details</a>
+                                <%# Calculate Amount Due %>
+                                <% const amountDue = order.totalAmount - (order.amountCollected || 0); %>
+                                <td class="px-4 py-3 whitespace-nowrap text-right font-medium <%= amountDue > 0 ? 'text-red-600' : 'text-green-600' %>">
+                                     ₹<%= amountDue.toFixed(2) %>
+                                </td>
+                                <td class="px-4 py-3 whitespace-nowrap text-center space-x-2">
+                                    <a href="/orders/<%= order._id %>" class="text-blue-600 hover:underline text-xs font-medium" title="View Order Details">Details</a>
+                                    
+                                    <%# Show Delivered Button only if not yet delivered %>
+                                    <% if (order.orderStatus === 'shipped') { %>
                                     <form action="/deliveries/<%= order._id %>/delivered" method="POST" class="inline" onsubmit="return confirm('Mark order as delivered?');"> 
                                         <button type="submit" class="text-green-600 hover:underline text-xs font-medium" title="Mark as Delivered">Delivered</button> 
                                     </form>
+                                    <% } %>
+
+                                    <%# Show Record Payment Button if not fully paid (or on credit) %>
+                                    <% if (order.paymentStatus !== 'paid' || order.paymentMethod === 'credit') { %>
+                                        <button onclick="openPaymentModal('<%= order._id %>', '<%= order.totalAmount %>', '<%= order.customerName || order.storeId?.storeName %>', '<%= order.paymentStatus %>', '<%= order.paymentMethod %>', '<%= order.amountCollected || 0 %>', '<%= escape(order.paymentNotes || '') %>')" 
+                                                class="text-purple-600 hover:underline text-xs font-medium" title="Record Payment">
+                                            Payment
+                                        </button>
+                                    <% } else { %>
+                                         <span class="text-xs text-gray-400">(Paid)</span>
+                                    <% } %>
                                 </td>
                             </tr>
                         <% }); %>
                     <% } else { %>
-                        <tr><td colspan="5" class="text-center py-6 text-gray-500">No deliveries currently in progress.</td></tr>
+                        <tr><td colspan="6" class="text-center py-6 text-gray-500">No deliveries currently in progress.</td></tr> <%# Adjusted colspan %>
                     <% } %>
                 </tbody>
             </table>
         </div>
     </div>
     </section>
+
+<div id="payment-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+        <form id="payment-form" action="" method="POST"> <%# Action set by JS %>
+            <div class="flex justify-between items-center mb-4">
+                <h4 class="text-lg font-semibold text-gray-800">Record Payment for Order <span id="payment-modal-order-id" class="font-mono text-sm"></span></h4>
+                <button type="button" id="payment-modal-close" class="text-gray-500 hover:text-gray-800 text-2xl leading-none">&times;</button>
+            </div>
+            
+            <p class="text-sm mb-1">Recipient: <span id="payment-modal-recipient" class="font-medium"></span></p>
+            <p class="text-sm mb-4">Total Amount Due: <span id="payment-modal-amount-due" class="font-semibold"></span></p>
+            
+            <div class="space-y-4">
+                 <div>
+                    <label for="paymentMethod" class="block text-sm font-medium text-gray-700 mb-1">Payment Method <span class="text-red-500">*</span></label>
+                    <select id="paymentMethod" name="paymentMethod" required class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        <option value="">-- Select Method --</option>
+                        <option value="cash">Cash</option>
+                        <option value="upi">UPI</option>
+                        <option value="cheque">Cheque</option>
+                        <option value="card">Card</option>
+                        <option value="credit">Credit (Pay Later)</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+
+                <%# Conditionally show UPI ID - requires fetching company upiId %>
+                 <div id="upi-info-display" class="hidden text-sm p-2 bg-indigo-50 border border-indigo-200 rounded">
+                     <p class="font-medium text-indigo-800">Company UPI ID:</p>
+                     <p class="text-indigo-700" id="company-upi-id">(Needs backend integration)</p> <%# TODO: Populate this %>
+                     <p class="text-xs text-indigo-500">Share this with the customer for UPI payment.</p>
+                 </div>
+
+                 <div>
+                    <label for="amountCollected" class="block text-sm font-medium text-gray-700 mb-1">Amount Collected (₹) <span class="text-red-500">*</span></label>
+                    <input type="number" id="amountCollected" name="amountCollected" required min="0" step="0.01" placeholder="Enter amount received"
+                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                </div>
+
+                 <div>
+                    <label for="paymentNotes" class="block text-sm font-medium text-gray-700 mb-1">Payment Notes (Optional)</label>
+                    <textarea id="paymentNotes" name="paymentNotes" rows="2" placeholder="e.g., Cheque no., UPI ID, Transaction Ref..."
+                              class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm"></textarea>
+                </div>
+            </div>
+
+            <div class="mt-6 pt-4 border-t border-gray-200 flex justify-end space-x-3">
+                <button type="button" id="payment-modal-cancel" class="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50">Cancel</button>
+                <button type="submit" class="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                    Record Payment
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+// ****** NEW SCRIPT FOR PAYMENT MODAL ******
+const paymentModal = document.getElementById('payment-modal');
+const paymentModalCloseBtn = document.getElementById('payment-modal-close');
+const paymentModalCancelBtn = document.getElementById('payment-modal-cancel');
+const paymentModalForm = document.getElementById('payment-form');
+const paymentModalOrderId = document.getElementById('payment-modal-order-id');
+const paymentModalRecipient = document.getElementById('payment-modal-recipient');
+const paymentModalAmountDue = document.getElementById('payment-modal-amount-due');
+const paymentMethodSelect = document.getElementById('paymentMethod');
+const upiInfoDiv = document.getElementById('upi-info-display');
+const companyUpiIdSpan = document.getElementById('company-upi-id'); // Span to display UPI ID
+const amountCollectedInput = document.getElementById('amountCollected');
+const paymentNotesInput = document.getElementById('paymentNotes');
+
+// TODO: Get company UPI ID from backend (passed via EJS maybe?)
+// Example: Assuming it's available in a JS variable `companyUpiIdFromServer`
+const companyUpiIdFromServer = "<%= locals.companyDetails?.upiId || 'N/A' %>"; // Get company UPI from locals
+
+function openPaymentModal(orderId, totalAmount, recipientName, currentStatus, currentMethod, currentCollected, currentNotes) {
+    if (!paymentModal) return;
+    
+    const amountDue = parseFloat(totalAmount) - parseFloat(currentCollected);
+    
+    // Set form action URL
+    paymentModalForm.action = `/deliveries/order/${orderId}/record-payment`;
+    
+    // Populate modal fields
+    paymentModalOrderId.textContent = `...${orderId.slice(-8)}`;
+    paymentModalRecipient.textContent = recipientName || 'N/A';
+    paymentModalAmountDue.textContent = `₹${amountDue.toFixed(2)}`;
+    
+    // Pre-fill form inputs only if not already paid (unless allowing updates?)
+    if (currentStatus !== 'paid') {
+        paymentMethodSelect.value = currentMethod !== 'unknown' ? currentMethod : '';
+        amountCollectedInput.value = amountDue > 0 ? amountDue.toFixed(2) : '0.00'; // Default to amount due
+        paymentNotesInput.value = decodeURIComponent(currentNotes || ''); // Decode notes from EJS
+    } else {
+        // Optionally disable form if already paid, or just show info
+        paymentMethodSelect.value = currentMethod;
+        amountCollectedInput.value = parseFloat(currentCollected).toFixed(2);
+        paymentNotesInput.value = decodeURIComponent(currentNotes || '');
+        // Maybe disable inputs?
+    }
+    
+    // Handle UPI display logic
+    toggleUpiDisplay(); 
+    paymentMethodSelect.addEventListener('change', toggleUpiDisplay);
+    
+    paymentModal.classList.remove('hidden');
+    paymentModal.classList.add('flex');
+}
+
+function toggleUpiDisplay() {
+    if (paymentMethodSelect.value === 'upi') {
+        if (companyUpiIdFromServer && companyUpiIdFromServer !== 'N/A') {
+            companyUpiIdSpan.textContent = companyUpiIdFromServer;
+             upiInfoDiv.classList.remove('hidden');
+        } else {
+             companyUpiIdSpan.textContent = '(Company UPI ID not set)';
+             upiInfoDiv.classList.remove('hidden');
+        }
+    } else {
+        upiInfoDiv.classList.add('hidden');
+    }
+}
+
+function closePaymentModal() {
+    if (!paymentModal) return;
+    paymentMethodSelect.removeEventListener('change', toggleUpiDisplay); // Clean up listener
+    paymentModal.classList.add('hidden');
+    paymentModal.classList.remove('flex');
+    paymentModalForm.reset(); // Reset form fields
+}
+
+// Attach close event listeners
+paymentModalCloseBtn.addEventListener('click', closePaymentModal);
+paymentModalCancelBtn.addEventListener('click', closePaymentModal);
+paymentModal.addEventListener('click', (e) => { 
+    if (e.target === paymentModal) { // Close if clicking outside the modal content
+        closePaymentModal();
+    }
+});
+
+// Note: The initial call to openPaymentModal happens from the button's onclick attribute in the EJS table.
+// </script>

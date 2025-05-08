@@ -826,4 +826,83 @@ router.post('/vehicle/fuel-log', async (req, res) => {
     }
 });
 
+// *** NEW ROUTE: Record Payment for an Order ***
+router.post('/order/:orderId/record-payment', async (req, res) => {
+    const loggedInUser = res.locals.loggedInUser; // Delivery partner
+    const orderId = req.params.orderId;
+    const { paymentMethod, amountCollected, paymentNotes } = req.body;
+
+    console.log(`--- Driver ${loggedInUser._id} attempting RECORD PAYMENT for order ${orderId} ---`);
+    console.log("Payment Data Received:", req.body);
+
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+        return res.redirect(`/deliveries/my?error=Invalid+Order+ID.`);
+    }
+
+    // Validate required payment inputs
+    const collectedAmountNum = parseFloat(amountCollected);
+    if (isNaN(collectedAmountNum) || collectedAmountNum < 0) {
+         return res.redirect(`/deliveries/my?error=Invalid+amount+collected.`);
+    }
+    if (!paymentMethod || !['cash', 'upi', 'cheque', 'credit', 'card', 'other'].includes(paymentMethod)) {
+         return res.redirect(`/deliveries/my?error=Invalid+payment+method+selected.`);
+    }
+
+    try {
+        // Find the order - Don't use .lean() as we need to save()
+        const order = await Order.findById(orderId);
+
+        if (!order) {
+            throw new Error("Order not found.");
+        }
+
+        // Authorization: Ensure the logged-in driver is assigned to this order
+        if (order.assignedDeliveryPartnerId?.toString() !== loggedInUser._id.toString()) {
+            throw new Error("You are not assigned to this order's delivery.");
+        }
+
+        // Optional: Check if order status is appropriate (e.g., shipped or delivered)
+        if (!['shipped', 'delivered'].includes(order.orderStatus)) {
+             console.warn(`Attempting to record payment for order ${orderId} with status ${order.orderStatus}`);
+             // Allow recording payment even if not yet marked delivered, but maybe add a note?
+        }
+        
+        // Optional: Prevent re-recording if already fully paid?
+        // if (order.paymentStatus === 'paid' && collectedAmountNum > 0) {
+        //     throw new Error("Order is already marked as fully paid.");
+        // }
+
+        // Update Payment Details
+        order.paymentMethod = paymentMethod;
+        order.paymentNotes = paymentNotes?.trim();
+        order.amountCollected = collectedAmountNum; // Replace or add? Let's replace for simplicity now.
+        order.paymentCollectedBy = loggedInUser._id;
+        order.paymentTimestamp = new Date();
+        order.updatedDate = new Date(); // Also update the general updatedDate
+        order.lastUpdatedBy = loggedInUser._id;
+
+        // Determine Payment Status
+        if (paymentMethod === 'credit') {
+            order.paymentStatus = 'credit';
+        } else if (collectedAmountNum >= order.totalAmount) {
+            order.paymentStatus = 'paid';
+        } else if (collectedAmountNum > 0 && collectedAmountNum < order.totalAmount) {
+            order.paymentStatus = 'partial';
+        } else {
+            // If amount is 0 and not credit, keep it pending? Or handle error?
+            // Let's assume 0 collection means it remains pending unless method is 'credit'
+            order.paymentStatus = 'pending'; 
+        }
+        
+        await order.save(); // Save the updated order
+        console.log(`Payment recorded for order ${orderId}. Status: ${order.paymentStatus}`);
+
+        res.redirect(`/deliveries/my?success=Payment+recorded+for+order+${order._id.toString().slice(-6)}`);
+
+    } catch (err) {
+        console.error(`Error recording payment for order ${orderId}:`, err);
+        res.redirect(`/deliveries/my?error=${encodeURIComponent(`Payment recording failed: ${err.message}`)}`);
+    }
+});
+
 module.exports = router;
