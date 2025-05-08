@@ -4,6 +4,10 @@ const mongoose = require('mongoose');
 const VEHICLE_TYPES = ['bike', 'scooter', 'car_hatchback', 'car_sedan', 'car_suv', 'van_small', 'van_large', 'truck_mini', 'truck_light', 'truck_heavy', 'other'];
 const FUEL_TYPES = ['petrol', 'diesel', 'cng', 'electric', 'hybrid', 'other'];
 
+// Example Regex for Indian Vehicle Number (adjust as needed for variations)
+// Allows formats like KL05AZ1234, KL5AZ1234, KL05A1234 etc. Needs refinement for perfect accuracy.
+const vehicleNumberRegex = /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,2}[0-9]{1,4}$/;
+
 const VehicleSchema = new mongoose.Schema({
     companyId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -11,52 +15,54 @@ const VehicleSchema = new mongoose.Schema({
         required: true,
         index: true
     },
-    vehicleNumber: { // e.g., "KL05AZ1234"
+    vehicleNumber: { 
         type: String,
         required: [true, "Vehicle registration number is required."],
         trim: true,
         uppercase: true,
-        // We'll enforce uniqueness per company in the route logic, as compound unique index with ref is tricky
+        // match: [vehicleNumberRegex, 'Invalid vehicle number format (e.g., KL05AZ1234).'], // Optional regex validation
+        // Uniqueness per company checked in route logic
     },
     type: {
         type: String,
         required: [true, "Vehicle type is required."],
-        enum: VEHICLE_TYPES
+        enum: { values: VEHICLE_TYPES, message: 'Invalid vehicle type: {VALUE}' }
     },
-    modelName: { // e.g., "Tata Ace Gold", "Honda Activa 6G"
+    modelName: { 
         type: String,
         trim: true,
         required: [true, "Vehicle model or make is required."]
     },
     fuelType: {
         type: String,
-        enum: FUEL_TYPES
+        enum: { values: FUEL_TYPES, message: 'Invalid fuel type: {VALUE}' }
     },
-    capacityVolume: { // Optional: e.g., in cubic meters or liters
+    capacityVolume: { 
         type: Number,
-        min: 0
+        min: [0, 'Capacity Volume cannot be negative.']
     },
-    capacityWeight: { // Optional: e.g., in kg
-        type: Number,
-        min: 0
+    capacityWeight: { 
+        type: Number, 
+        min: [0, 'Capacity Weight cannot be negative.']
     },
-    initialOdometer: { // Odometer reading when vehicle was added to the system
+    initialOdometer: { 
         type: Number,
         default: 0,
-        min: 0
+        min: [0, 'Initial Odometer cannot be negative.']
     },
-    currentOdometer: { // Last known odometer reading, updated by logs
+    currentOdometer: { 
         type: Number,
-        default: function() { return this.initialOdometer; }, // Defaults to initialOdometer
-        min: 0
+        default: function() { return this.initialOdometer; }, 
+        min: [0, 'Current Odometer cannot be negative.']
+        // Validation that current >= initial happens implicitly or during updates
     },
-    assignedDriverId: { // Tracks the driver CURRENTLY assigned/using this vehicle (if any)
+    assignedDriverId: { 
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         default: null,
-        sparse: true // Allows multiple nulls if not assigned
+        sparse: true 
     },
-    isActive: { // If the vehicle is currently operational and available for assignment
+    isActive: { 
         type: Boolean,
         default: true
     },
@@ -64,26 +70,12 @@ const VehicleSchema = new mongoose.Schema({
         type: String,
         trim: true
     },
-    createdDate: {
-        type: Date,
-        default: Date.now
-    },
-    lastUpdated: {
-        type: Date,
-        default: Date.now
-    }
+    createdDate: { type: Date, default: Date.now },
+    lastUpdated: { type: Date, default: Date.now }
 });
 
-// Middleware to update `lastUpdated` on save
-VehicleSchema.pre('save', function(next) {
-    this.lastUpdated = new Date();
-    next();
-});
-
-// To ensure vehicleNumber is unique per company, we'll handle this in the route logic
-// as compound unique indexes with refs require a bit more nuance or a plugin.
-// A simple unique index on vehicleNumber would make it unique across all companies.
-// VehicleSchema.index({ companyId: 1, vehicleNumber: 1 }, { unique: true }); // Consider adding this later
+VehicleSchema.pre('save', function(next) { this.lastUpdated = new Date(); next(); });
+VehicleSchema.pre('findOneAndUpdate', function(next) { this.set({ lastUpdated: new Date() }); next(); }); // Add for updates
 
 module.exports = mongoose.model('Vehicle', VehicleSchema);
 module.exports.VEHICLE_TYPES = VEHICLE_TYPES;

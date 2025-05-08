@@ -17,11 +17,9 @@
 
 <section class="p-6 flex-1 overflow-y-auto">
     <div class="max-w-2xl mx-auto">
+        <%# Error display %>
         <% if (typeof error === 'string' && error && error.trim() !== '') { %>
-            <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md relative" role="alert">
-                <strong class="font-bold">Error: </strong>
-                <span class="block sm:inline"><%= error %></span>
-            </div>
+             <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md relative" role="alert">...<%= error %>...</div>
         <% } %>
 
         <form action="<%= isEditing ? '/vehicles/' + currentVehicleData._id + '?_method=PUT' : '/vehicles' %>" method="POST" class="bg-white p-6 border rounded-lg shadow-sm space-y-5">
@@ -31,14 +29,20 @@
                     <label for="vehicleNumber" class="block text-sm font-medium text-gray-700 mb-1">Vehicle Number <span class="text-red-500">*</span></label>
                     <input type="text" id="vehicleNumber" name="vehicleNumber" 
                            value="<%= typeof currentFormData.vehicleNumber !== 'undefined' ? currentFormData.vehicleNumber : (currentVehicleData.vehicleNumber || '') %>" 
-                           required placeholder="e.g., KL01AB1234"
+                           required 
+                           placeholder="e.g., KL01AB1234"
+                           maxlength="15" 
+                           pattern="^[A-Z]{2}[0-9]{1,2}[A-Z]{1,2}[0-9]{1,4}$" <%# Basic pattern %>
+                           title="Enter valid vehicle number format (e.g., KL05AZ1234)"
                            class="mt-1 block w-full uppercase px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                 </div>
                 <div>
                     <label for="modelName" class="block text-sm font-medium text-gray-700 mb-1">Make & Model <span class="text-red-500">*</span></label>
                     <input type="text" id="modelName" name="modelName" 
                            value="<%= typeof currentFormData.modelName !== 'undefined' ? currentFormData.modelName : (currentVehicleData.modelName || '') %>" 
-                           required placeholder="e.g., Tata Ace Gold"
+                           required 
+                           maxlength="100"
+                           placeholder="e.g., Tata Ace Gold"
                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                 </div>
             </div>
@@ -47,22 +51,12 @@
                 <div>
                     <label for="type" class="block text-sm font-medium text-gray-700 mb-1">Vehicle Type <span class="text-red-500">*</span></label>
                     <select id="type" name="type" required class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                        <option value="">-- Select Type --</option>
-                        <% localVehicleTypes.forEach(typeOpt => { %>
-                            <% const valToCompare = typeof currentFormData.type !== 'undefined' ? currentFormData.type : currentVehicleData.type; %>
-                            <option value="<%= typeOpt %>" <%= (valToCompare === typeOpt) ? 'selected' : '' %> class="capitalize"><%= typeOpt.replace(/_/g, ' ') %></option>
-                        <% }); %>
-                    </select>
+                        </select>
                 </div>
                 <div>
                     <label for="fuelType" class="block text-sm font-medium text-gray-700 mb-1">Fuel Type</label>
                     <select id="fuelType" name="fuelType" class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                        <option value="">-- Select Fuel Type --</option>
-                        <% localFuelTypes.forEach(fuelOpt => { %>
-                             <% const valToCompare = typeof currentFormData.fuelType !== 'undefined' ? currentFormData.fuelType : currentVehicleData.fuelType; %>
-                            <option value="<%= fuelOpt %>" <%= (valToCompare === fuelOpt) ? 'selected' : '' %> class="capitalize"><%= fuelOpt %></option>
-                        <% }); %>
-                    </select>
+                        </select>
                 </div>
             </div>
             
@@ -72,30 +66,32 @@
                     <input type="number" id="initialOdometer" name="initialOdometer" 
                            value="<%= typeof currentFormData.initialOdometer !== 'undefined' ? currentFormData.initialOdometer : (currentVehicleData.initialOdometer !== undefined ? currentVehicleData.initialOdometer : '0') %>" 
                            min="0" 
-                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm <%= (isEditing && typeof currentVehicleData.initialOdometer !== 'undefined') ? 'bg-gray-100 cursor-not-allowed' : '' %>" 
+                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm ... <%= (isEditing && typeof currentVehicleData.initialOdometer !== 'undefined') ? 'bg-gray-100 cursor-not-allowed' : '' %>" 
                            <%= (isEditing && typeof currentVehicleData.initialOdometer !== 'undefined') ? 'readonly' : '' %>>
-                     <% if (isEditing && typeof currentVehicleData.initialOdometer !== 'undefined') { %> <p class="text-xs text-gray-500 mt-1">Initial odometer cannot be changed.</p> <% } %>
+                    <% if (isEditing && typeof currentVehicleData.initialOdometer !== 'undefined') { %> <p class="text-xs text-gray-500 mt-1">Cannot be changed.</p> <% } %>
                 </div>
                 <div>
-                    <label for="capacityWeight" class="block text-sm font-medium text-gray-700 mb-1">Capacity (Weight in kg)</label>
+                    <label for="capacityWeight" class="block text-sm font-medium text-gray-700 mb-1">Capacity (kg)</label>
                     <input type="number" id="capacityWeight" name="capacityWeight" 
                            value="<%= typeof currentFormData.capacityWeight !== 'undefined' ? currentFormData.capacityWeight : (currentVehicleData.capacityWeight || '') %>" 
-                           placeholder="e.g., 750" min="0"
-                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                           placeholder="e.g., 750" 
+                           min="0" step="any"
+                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm">
                 </div>
                  <div>
-                    <label for="capacityVolume" class="block text-sm font-medium text-gray-700 mb-1">Capacity (Volume m³)</label>
+                    <label for="capacityVolume" class="block text-sm font-medium text-gray-700 mb-1">Capacity (m³)</label>
                     <input type="number" id="capacityVolume" name="capacityVolume" 
                            value="<%= typeof currentFormData.capacityVolume !== 'undefined' ? currentFormData.capacityVolume : (currentVehicleData.capacityVolume || '') %>" 
-                           placeholder="e.g., 3.5" min="0" step="0.1"
-                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                           placeholder="e.g., 3.5" 
+                           min="0" step="0.01"
+                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm">
                 </div>
             </div>
 
             <div>
                 <label for="notes" class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
                 <textarea id="notes" name="notes" rows="3" placeholder="Any specific notes about the vehicle..."
-                          class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"><%= typeof currentFormData.notes !== 'undefined' ? currentFormData.notes : (currentVehicleData.notes || '') %></textarea>
+                          class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm"><%= typeof currentFormData.notes !== 'undefined' ? currentFormData.notes : (currentVehicleData.notes || '') %></textarea>
             </div>
             
             <% if (isEditing) { %>
