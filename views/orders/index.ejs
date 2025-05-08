@@ -15,7 +15,6 @@
     <div class="bg-white border rounded-lg shadow-sm">
         <div class="px-4 py-3 border-b">
             <h3 class="text-base font-semibold text-gray-700">Order List</h3>
-            <%# TODO: Add filters/search later %>
         </div>
 
         <div class="overflow-x-auto">
@@ -28,14 +27,17 @@
                             <th class="px-4 py-2 font-medium">Store</th>
                         <% } %>
                         <th class="px-4 py-2 font-medium">Customer</th>
-                        <th class="px-4 py-2 font-medium text-right">Total (₹)</th> <th class="px-4 py-2 font-medium">Status</th>
-                        <th class="px-4 py-2 font-medium text-center">Actions</th> </tr>
+                        <th class="px-4 py-2 font-medium text-right">Total (₹)</th>
+                        <th class="px-4 py-2 font-medium">Order Status</th>
+                        <th class="px-4 py-2 font-medium">Payment Status</th> <%# <-- NEW COLUMN %>
+                        <th class="px-4 py-2 font-medium text-center">Actions</th>
+                    </tr>
                 </thead>
                 <tbody class="divide-y text-sm text-gray-700">
                     <% if (typeof orders !== 'undefined' && orders && orders.length > 0) { %>
                         <% orders.forEach(order => { %>
                             <tr class="hover:bg-gray-50">
-                                <td class="px-4 py-3 font-mono text-xs"><%= order._id.toString().slice(-8) %>...</td>
+                                <td class="px-4 py-3 font-mono text-xs">...<%= order._id.toString().slice(-8) %></td>
                                 <td class="px-4 py-3 whitespace-nowrap"><%= new Date(order.placedDate).toLocaleDateString('en-IN') %></td>
                                 <% if (['admin', 'warehouse_owner'].includes(locals.loggedInUser.role)) { %>
                                     <td class="px-4 py-3"><%= order.storeId?.storeName || 'N/A' %></td>
@@ -43,44 +45,46 @@
                                 <td class="px-4 py-3"><%= order.customerName || order.customerId?.username || 'N/A' %></td>
                                 <td class="px-4 py-3 text-right">₹<%= order.totalAmount.toFixed(2) %></td>
                                 <td class="px-4 py-3">
+                                    <%# Order Status Badge %>
                                     <% 
-                                      let statusClass = 'bg-gray-100 text-gray-800'; 
-                                      switch (order.orderStatus) { 
-                                        case 'pending': statusClass = 'bg-yellow-100 text-yellow-800'; break; 
-                                        case 'confirmed': statusClass = 'bg-blue-100 text-blue-800'; break; 
-                                        case 'shipped': statusClass = 'bg-purple-100 text-purple-800'; break; 
-                                        case 'delivered': statusClass = 'bg-green-100 text-green-800'; break; 
-                                        case 'cancelled': statusClass = 'bg-red-100 text-red-800'; break; 
-                                      } 
+                                      let orderStatusClass = 'bg-gray-100 text-gray-800'; 
+                                      switch (order.orderStatus) { /* ... cases ... */ } 
                                     %>
-                                    <span class="inline-block px-2 py-1 text-xs font-medium rounded-full capitalize <%= statusClass %>">
+                                    <span class="inline-block px-2 py-1 text-xs font-medium rounded-full capitalize <%= orderStatusClass %>">
                                         <%= order.orderStatus %>
                                     </span>
                                 </td>
-                                <td class="px-4 py-3 whitespace-nowrap text-center">
+                                <%# --- NEW: Payment Status Column --- %>
+                                <td class="px-4 py-3">
+                                     <% 
+                                        let paymentStatusClass = 'bg-gray-100 text-gray-800'; 
+                                        const paymentStatusText = order.paymentStatus || 'pending'; // Default text if undefined
+                                        switch (paymentStatusText) { 
+                                            case 'pending': paymentStatusClass = 'bg-yellow-100 text-yellow-800'; break; 
+                                            case 'paid': paymentStatusClass = 'bg-green-100 text-green-800'; break; 
+                                            case 'partial': paymentStatusClass = 'bg-orange-100 text-orange-800'; break; 
+                                            case 'credit': paymentStatusClass = 'bg-blue-100 text-blue-800'; break; 
+                                        } 
+                                     %>
+                                     <span class="inline-block px-2 py-1 text-xs font-medium rounded-full capitalize <%= paymentStatusClass %>">
+                                         <%= paymentStatusText %>
+                                     </span>
+                                </td>
+                                <%# --- END: Payment Status Column --- %>
+                                <td class="px-4 py-3 whitespace-nowrap text-center space-x-2">
                                     <a href="/orders/<%= order._id %>" class="text-blue-600 hover:text-blue-800 hover:underline text-xs font-medium">Details</a>
-                                    
-                                    <%# --- ADD EDIT BUTTON CONDITIONALLY --- %>
-                                    <% if (['pending', 'confirmed'].includes(order.orderStatus)) { %>
-                                        <%# Check if current user role can generally manage orders (adjust roles as needed) %>
-                                        <% if (['admin', 'warehouse_owner', 'store_owner'].includes(locals.loggedInUser.role)) { %>
-                                            <a href="/orders/<%= order._id %>/edit" class="text-green-600 hover:text-green-800 hover:underline text-xs font-medium ml-2">Edit</a>
-                                        <% } %>
+                                    <% if (['pending', 'confirmed'].includes(order.orderStatus) && ['admin', 'warehouse_owner', 'store_owner'].includes(locals.loggedInUser.role)) { %>
+                                        <a href="/orders/<%= order._id %>/edit" class="text-green-600 hover:text-green-800 hover:underline text-xs font-medium">Edit</a>
                                     <% } %>
-                                    <%# --- END EDIT BUTTON --- %>
-
-                                    <%# TODO: Add Delete/Cancel button conditionally later %>
-
                                 </td>
                             </tr>
                         <% }); %>
                     <% } else { %>
-                        <% const colSpan = ['admin', 'warehouse_owner'].includes(locals.loggedInUser.role) ? 7 : 6; %>
-                        <tr><td colspan="<%= colSpan %>" class="text-center py-10 text-gray-500">No orders found matching your criteria.</td></tr>
+                        <% const colSpan = ['admin', 'warehouse_owner'].includes(locals.loggedInUser.role) ? 8 : 7; %> <%# Adjusted colspan %>
+                        <tr><td colspan="<%= colSpan %>" class="text-center py-10 text-gray-500">No orders found.</td></tr>
                     <% } %>
                 </tbody>
             </table>
         </div>
-        <%# Add Pagination later if needed %>
     </div>
 </section>

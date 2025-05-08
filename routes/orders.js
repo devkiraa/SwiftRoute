@@ -262,6 +262,7 @@ router.get('/:id', async (req, res) => {
             .populate('customerId', 'username email phone')
             .populate({ path: 'orderItems.itemId', model: 'Item', select: 'name sku price' })
             .populate('assignedDeliveryPartnerId', 'username')
+            .populate('paymentCollectedBy', 'username')
             .lean();
 
         if (!order) { /* ... not found handling ... */ }

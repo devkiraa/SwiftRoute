@@ -33,7 +33,7 @@
     <div class="bg-white border rounded-lg shadow-sm">
         <div class="px-4 py-3 border-b bg-gray-50 rounded-t-lg">
             <h3 class="text-base font-semibold text-gray-700">Deliveries In Progress (<%= ordersInProgress ? ordersInProgress.length : 0 %>)</h3>
-             <p class="text-xs text-gray-500">Orders marked as 'Shipped'. Mark delivered and record payment upon completion.</p>
+            <p class="text-xs text-gray-500">Orders currently marked as 'Shipped'. Mark delivered and record payment upon completion.</p>
         </div>
         <div class="overflow-x-auto">
             <table class="w-full text-left">
@@ -44,6 +44,7 @@
                         <th class="px-4 py-2 font-medium">Recipient</th>
                         <th class="px-4 py-2 font-medium">Address</th>
                         <th class="px-4 py-2 font-medium text-center">Amount Due</th>
+                        <th class="px-4 py-2 font-medium text-center">Payment</th> <%# <-- NEW COLUMN %>
                         <th class="px-4 py-2 font-medium text-center">Actions</th>
                     </tr>
                 </thead>
@@ -55,42 +56,57 @@
                                 <td class="px-4 py-3"><%= order.storeId?.storeName || 'N/A' %></td>
                                 <td class="px-4 py-3"><%= order.customerName || 'N/A' %></td>
                                 <td class="px-4 py-3 text-xs"><%= order.shippingAddress %></td>
-                                <%# Calculate Amount Due %>
                                 <% const amountDue = order.totalAmount - (order.amountCollected || 0); %>
                                 <td class="px-4 py-3 whitespace-nowrap text-right font-medium <%= amountDue > 0 ? 'text-red-600' : 'text-green-600' %>">
                                      ₹<%= amountDue.toFixed(2) %>
                                 </td>
+                                <%# --- NEW: Payment Status Column --- %>
+                                <td class="px-4 py-3 text-center">
+                                     <% 
+                                        let paymentStatusClass = 'bg-gray-100 text-gray-800'; 
+                                        const paymentStatusText = order.paymentStatus || 'pending'; 
+                                        switch (paymentStatusText) { 
+                                             case 'pending': paymentStatusClass = 'bg-yellow-100 text-yellow-800'; break; 
+                                             case 'paid': paymentStatusClass = 'bg-green-100 text-green-800'; break; 
+                                             case 'partial': paymentStatusClass = 'bg-orange-100 text-orange-800'; break; 
+                                             case 'credit': paymentStatusClass = 'bg-blue-100 text-blue-800'; break; 
+                                        } 
+                                     %>
+                                     <span class="inline-block px-2 py-1 text-xs font-medium rounded-full capitalize <%= paymentStatusClass %>">
+                                         <%= paymentStatusText %>
+                                     </span>
+                                </td>
+                                <%# --- END: Payment Status Column --- %>
                                 <td class="px-4 py-3 whitespace-nowrap text-center space-x-2">
                                     <a href="/orders/<%= order._id %>" class="text-blue-600 hover:underline text-xs font-medium" title="View Order Details">Details</a>
                                     
-                                    <%# Show Delivered Button only if not yet delivered %>
+                                    <%# Show Delivered Button only if status is 'shipped' %>
                                     <% if (order.orderStatus === 'shipped') { %>
                                     <form action="/deliveries/<%= order._id %>/delivered" method="POST" class="inline" onsubmit="return confirm('Mark order as delivered?');"> 
                                         <button type="submit" class="text-green-600 hover:underline text-xs font-medium" title="Mark as Delivered">Delivered</button> 
                                     </form>
                                     <% } %>
 
-                                    <%# Show Record Payment Button if not fully paid (or on credit) %>
+                                    <%# Show Record Payment Button if not fully paid OR on credit %>
                                     <% if (order.paymentStatus !== 'paid' || order.paymentMethod === 'credit') { %>
-                                        <button onclick="openPaymentModal('<%= order._id %>', '<%= order.totalAmount %>', '<%= order.customerName || order.storeId?.storeName %>', '<%= order.paymentStatus %>', '<%= order.paymentMethod %>', '<%= order.amountCollected || 0 %>', '<%= escape(order.paymentNotes || '') %>')" 
+                                        <button onclick="openPaymentModal('<%= order._id %>', '<%= order.totalAmount %>', '<%= String(order.customerName || order.storeId?.storeName || '').replace(/'/g, '\\\'').replace(/"/g, '&quot;') %>', '<%= order.paymentStatus %>', '<%= order.paymentMethod %>', '<%= order.amountCollected || 0 %>', '<%= escape(order.paymentNotes || '') %>')" 
                                                 class="text-purple-600 hover:underline text-xs font-medium" title="Record Payment">
                                             Payment
                                         </button>
-                                    <% } else { %>
-                                         <span class="text-xs text-gray-400">(Paid)</span>
+                                    <% } else if (order.paymentStatus === 'paid') { %>
+                                         <span class="text-xs text-green-600 font-medium" title="Payment Completed">✓ Paid</span>
                                     <% } %>
                                 </td>
                             </tr>
                         <% }); %>
                     <% } else { %>
-                        <tr><td colspan="6" class="text-center py-6 text-gray-500">No deliveries currently in progress.</td></tr> <%# Adjusted colspan %>
+                        <tr><td colspan="7" class="text-center py-6 text-gray-500">No deliveries currently in progress.</td></tr> <%# Adjusted colspan %>
                     <% } %>
                 </tbody>
             </table>
         </div>
     </div>
     </section>
-
 <div id="payment-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-4">
     <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
         <form id="payment-form" action="" method="POST"> <%# Action set by JS %>
