@@ -10,6 +10,7 @@ const Order = require('../models/Order');
 const Store = require('../models/Store');
 const Warehouse = require('../models/Warehouse');
 const Item = require('../models/Item');
+const Vehicle = require('../models/Vehicle');
 const bcrypt = require('bcrypt'); // Still needed for register/login
 
 const router = express.Router();
@@ -201,6 +202,8 @@ router.get('/dashboard', ensureAuthenticated, async (req, res) => {
     let dashboardData = { stats: {}, recentOrders: [] }; // Initialize data object
     let canCreateOrder = false; // Default
     let viewTitle = 'Dashboard';
+    let vehicleData = { currentVehicle: null, availableVehicles: [] }; // For delivery partner
+
 
     try {
         console.log(`Loading dashboard for role: ${loggedInUser.role}`);
@@ -268,38 +271,41 @@ router.get('/dashboard', ensureAuthenticated, async (req, res) => {
                      .lean();
                 break;
 
-            case 'delivery_partner':
+                case 'delivery_partner':
                 viewTitle = 'My Deliveries Dashboard';
-                canCreateOrder = false; // Drivers don't create orders
-                // Fetch delivery-specific stats
-                const [pickupCount, outForDeliveryCount] = await Promise.all([
+                canCreateOrder = false; 
+
+                if (loggedInUser.currentVehicleId) {
+                    vehicleData.currentVehicle = await Vehicle.findById(loggedInUser.currentVehicleId).select('vehicleNumber modelName type').lean();
+                } else if (companyId) {
+                    vehicleData.availableVehicles = await Vehicle.find({ companyId: companyId, isActive: true, assignedDriverId: null }).select('vehicleNumber modelName type').sort({ vehicleNumber: 1 }).lean();
+                }
+
+                const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+                const [pickupCount, inProgressCount, deliveredTodayCount] = await Promise.all([
                      Order.countDocuments({ assignedDeliveryPartnerId: loggedInUser._id, orderStatus: 'confirmed' }),
-                     Order.countDocuments({ assignedDeliveryPartnerId: loggedInUser._id, orderStatus: 'shipped' })
-                 ]);
-                 dashboardData.stats = {
-                     'Orders Ready for Pickup': pickupCount,
-                     'Orders Out for Delivery': outForDeliveryCount,
-                 };
-                 // Fetch current deliveries
-                 dashboardData.recentOrders = await Order.find({ assignedDeliveryPartnerId: loggedInUser._id, orderStatus: { $in: ['confirmed', 'shipped'] } })
-                     .sort({ placedDate: 1 }) // Sort oldest first for delivery sequence?
-                     .limit(5)
-                     .populate('storeId', 'storeName')
-                     .lean();
+                     Order.countDocuments({ assignedDeliveryPartnerId: loggedInUser._id, orderStatus: 'shipped' }),
+                     Order.countDocuments({ assignedDeliveryPartnerId: loggedInUser._id, orderStatus: 'delivered', updatedDate: { $gte: startOfDay } })
+                ]);
+                 dashboardData.stats = { 'Ready for Pickup': pickupCount, 'In Progress': inProgressCount, 'Completed Today': deliveredTodayCount };
+
+                 dashboardData.recentActivity = await Order.find({ assignedDeliveryPartnerId: loggedInUser._id, orderStatus: { $in: ['confirmed', 'shipped'] } })
+                     .sort({ placedDate: 1 }).limit(5).populate('storeId', 'storeName address').lean();
+                 dashboardData.activityTitle = "Upcoming Stops";
                 break;
 
             default:
-                // Handle unexpected roles
                 viewTitle = 'Dashboard';
                 dashboardData.stats = { Info: "No specific stats for your role." };
         }
 
-        res.render('dashboard', { // Renders views/dashboard.ejs
+        res.render('dashboard', { 
             title: viewTitle,
-            stats: dashboardData.stats, // Pass the specific stats
-            recentOrders: dashboardData.recentOrders, // Pass recent orders
-            canCreateOrder: canCreateOrder, // Pass flag for button visibility
-            // loggedInUser, companyDetails, storeDetails are available via res.locals from global middleware
+            stats: dashboardData.stats, 
+            recentActivity: dashboardData.recentActivity, 
+            activityTitle: dashboardData.activityTitle,
+            canCreateOrder: canCreateOrder, 
+            vehicleData: vehicleData, 
             layout: './layouts/dashboard_layout'
         });
 

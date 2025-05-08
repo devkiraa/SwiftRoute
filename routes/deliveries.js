@@ -7,6 +7,7 @@ const User = require('../models/User');
 const Store = require('../models/Store');
 const Item = require('../models/Item');
 const Vehicle = require('../models/Vehicle');
+const FuelLog = require('../models/FuelLog');
 const Warehouse = require('../models/Warehouse');
 
 const router = express.Router();
@@ -82,7 +83,8 @@ router.get('/my', async (req, res) => {
             title: 'My Deliveries', originWarehouse, aggregatedItems,
             ordersForPickup, ordersInProgress, showPickupButton,
             availableVehicles, // Pass available vehicles to the view
-            currentVehicle,    // Pass currently selected vehicle to the view
+            currentVehicle, 
+            showFuelLogButton: !!currentVehicle,   // Pass currently selected vehicle to the view
             error: req.query.error, success_msg: req.query.success, 
             layout: './layouts/dashboard_layout'
         });
@@ -482,6 +484,105 @@ router.post('/vehicle/release', async (req, res) => {
         res.redirect(`/deliveries/my?error=Failed+to+release+vehicle:+${err.message}`);
     } finally {
         await session.endSession();
+    }
+});
+
+// GET /deliveries/vehicle/fuel-log/new - Show fuel log form
+router.get('/vehicle/fuel-log/new', async (req, res) => {
+    const loggedInUser = res.locals.loggedInUser;
+
+    if (!loggedInUser.currentVehicleId) {
+        return res.redirect('/deliveries/my?error=Please+select+a+vehicle+first+to+log+fuel.');
+    }
+
+    try {
+        const currentVehicle = await Vehicle.findById(loggedInUser.currentVehicleId).lean();
+        if (!currentVehicle) {
+             // Clear user's current vehicle if it no longer exists? Or redirect with error.
+             await User.findByIdAndUpdate(loggedInUser._id, { currentVehicleId: null });
+             return res.redirect('/deliveries/my?error=Selected+vehicle+not+found.+Please+re-select.');
+        }
+
+        res.render('deliveries/fuel_log_form', {
+            title: 'Log Fuel Entry',
+            currentVehicle: currentVehicle,
+            fuelTypes: Vehicle.FUEL_TYPES, // Pass fuel types enum
+            formData: {}, // For initial form display
+            layout: './layouts/dashboard_layout'
+        });
+    } catch(err) {
+        console.error("Error showing fuel log form:", err);
+        res.redirect(`/deliveries/my?error=Could+not+load+fuel+log+form.`);
+    }
+});
+
+// POST /deliveries/vehicle/fuel-log - Save fuel log entry
+router.post('/vehicle/fuel-log', async (req, res) => {
+    const loggedInUser = res.locals.loggedInUser;
+    const { vehicleId, odometerReading, fuelQuantityLiters, fuelCostTotalINR, fuelTypeFilled, notes } = req.body;
+
+    if (!vehicleId || vehicleId !== loggedInUser.currentVehicleId?.toString()) {
+         return res.redirect('/deliveries/my?error=Invalid+vehicle+for+fuel+log.');
+    }
+
+    const session = await mongoose.startSession(); // Use transaction for consistency
+    try {
+         await session.withTransaction(async () => {
+            const odo = parseFloat(odometerReading);
+            const qty = parseFloat(fuelQuantityLiters);
+            const cost = parseFloat(fuelCostTotalINR);
+
+            if (isNaN(odo) || isNaN(qty) || isNaN(cost)) {
+                 throw new Error("Odometer, Quantity, and Cost must be valid numbers.");
+            }
+             if (qty <= 0 || cost < 0) {
+                  throw new Error("Fuel quantity must be positive and cost cannot be negative.");
+             }
+
+            const vehicle = await Vehicle.findById(vehicleId).session(session);
+            if (!vehicle) throw new Error("Vehicle not found.");
+            if (odo < vehicle.currentOdometer) {
+                 throw new Error(`New odometer reading (${odo}km) cannot be less than the current reading (${vehicle.currentOdometer}km).`);
+            }
+
+            // Create Fuel Log Entry
+            const fuelLog = new FuelLog({
+                vehicleId,
+                driverId: loggedInUser._id,
+                companyId: loggedInUser.companyId,
+                logDate: new Date(), // Or allow user to set date? For now, use current time.
+                odometerReading: odo,
+                fuelQuantityLiters: qty,
+                fuelCostTotalINR: cost,
+                fuelTypeFilled: fuelTypeFilled || vehicle.fuelType, // Use vehicle's default if not specified
+                notes
+            });
+            await fuelLog.save({ session });
+            console.log(`Fuel log saved for vehicle ${vehicleId}`);
+
+            // Update Vehicle's Current Odometer
+            vehicle.currentOdometer = odo;
+            vehicle.lastUpdated = new Date();
+            await vehicle.save({ session });
+            console.log(`Vehicle ${vehicleId} odometer updated to ${odo}`);
+         }); // Transaction commits
+
+        res.redirect('/deliveries/my?success=Fuel+log+added+successfully');
+
+    } catch (err) {
+        console.error("Error saving fuel log:", err);
+        // Re-fetch vehicle data to re-render form accurately
+        const currentVehicleData = await Vehicle.findById(vehicleId).lean(); // Fetch outside transaction for render
+        res.status(400).render('deliveries/fuel_log_form', {
+            title: 'Log Fuel Entry',
+            currentVehicle: currentVehicleData || { _id: vehicleId }, // Provide vehicle data if possible
+            fuelTypes: Vehicle.FUEL_TYPES,
+            formData: req.body, // Repopulate form with submitted data
+            error: `Failed to save fuel log: ${err.message}`,
+            layout: './layouts/dashboard_layout'
+        });
+    } finally {
+         await session.endSession();
     }
 });
 
