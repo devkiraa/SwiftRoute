@@ -1,0 +1,61 @@
+<% locals.pageTitle = typeof title !== 'undefined' ? title : 'Manage Suppliers' %>
+
+<header class="py-3 px-6 border-b border-gray-200 bg-white shadow-sm flex-shrink-0">
+    <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold text-gray-800"><%= locals.pageTitle %></h2>
+        <div class="flex items-center">
+            <% if (typeof error_msg === 'string' && error_msg) { %><div class="mr-4 p-2 text-xs bg-red-100 text-red-700 rounded"><%= decodeURIComponent(error_msg.replace(/\+/g, ' ')) %></div><% } %>
+            <% if (typeof success_msg === 'string' && success_msg) { %><div class="mr-4 p-2 text-xs bg-green-100 text-green-700 rounded"><%= decodeURIComponent(success_msg.replace(/\+/g, ' ')) %></div><% } %>
+            <a href="/suppliers/new" class="inline-block px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700">
+                Add New Supplier
+            </a>
+        </div>
+    </div>
+</header>
+
+<section class="px-6 py-6 flex-1 overflow-y-auto">
+    <div class="bg-white border rounded-lg shadow-sm">
+        <div class="px-4 py-3 border-b">
+            <h3 class="text-base font-semibold text-gray-700">Supplier List</h3>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left">
+                <thead class="bg-gray-50 border-b text-xs uppercase text-gray-500 tracking-wider">
+                    <tr>
+                        <th class="px-4 py-2 font-medium">Supplier Name</th>
+                        <th class="px-4 py-2 font-medium">Contact</th>
+                        <th class="px-4 py-2 font-medium">Email</th>
+                        <th class="px-4 py-2 font-medium">Phone</th>
+                        <th class="px-4 py-2 font-medium">GSTIN</th>
+                         <% if (locals.loggedInUser.role === 'admin') { %><th class="px-4 py-2 font-medium">Company</th><% } %>
+                        <th class="px-4 py-2 font-medium text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y text-sm text-gray-700">
+                    <% if (typeof suppliers !== 'undefined' && suppliers.length > 0) { %>
+                        <% suppliers.forEach(supplier => { %>
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-4 py-3 font-medium text-gray-900"><%= supplier.supplierName %></td>
+                                <td class="px-4 py-3"><%= supplier.contactPerson || '-' %></td>
+                                <td class="px-4 py-3"><%= supplier.email || '-' %></td>
+                                <td class="px-4 py-3 whitespace-nowrap"><%= supplier.phone || '-' %></td>
+                                <td class="px-4 py-3 font-mono text-xs"><%= supplier.gstin || '-' %></td>
+                                 <% if (locals.loggedInUser.role === 'admin') { %><td class="px-4 py-3"><%= supplier.companyId?.companyName || 'N/A' %></td><% } %>
+                                <td class="px-4 py-3 whitespace-nowrap text-center space-x-2">
+                                    <a href="/suppliers/<%= supplier._id %>/edit" class="text-blue-600 hover:text-blue-800 hover:underline text-xs font-medium">Edit</a>
+                                    <form action="/suppliers/<%= supplier._id %>?_method=DELETE" method="POST" class="inline" 
+                                          onsubmit="return confirm('Delete supplier: <%= supplier.supplierName %>? This cannot be undone. Ensure no purchase orders are linked.');">
+                                        <button type="submit" class="text-red-600 hover:text-red-800 hover:underline text-xs font-medium p-0 border-none bg-transparent cursor-pointer">Delete</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        <% }); %>
+                    <% } else { %>
+                         <% const colSpan = locals.loggedInUser.role === 'admin' ? 7 : 6; %>
+                        <tr><td colspan="<%= colSpan %>" class="text-center py-10 text-gray-500">No suppliers found. <a href="/suppliers/new" class="text-blue-600 hover:underline">Add one?</a></td></tr>
+                    <% } %>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>

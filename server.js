@@ -24,13 +24,14 @@ const storeRoutes = require('./routes/stores');
 const userRoutes = require('./routes/users');
 const warehouseRoutes = require('./routes/warehouses');
 const itemRoutes = require('./routes/items'); 
-// Require other routes as you create them:
+const supplierRoutes = require('./routes/suppliers');
 const companyRoutes = require('./routes/company');
 const vehicleRoutes = require('./routes/vehicles');
 const orderRoutes = require('./routes/orders');
 const reportingRoutes = require('./routes/reporting');
 const adminRoutes = require('./routes/admin'); // If you separate admin routes
 const deliveryRoutes = require('./routes/deliveries');
+const purchaseOrderRoutes = require('./routes/purchaseOrders');
 const methodOverride = require('method-override');
 
 const app = express();
@@ -123,6 +124,8 @@ app.use('/orders', orderRoutes);
 app.use('/reporting', reportingRoutes);
 app.use('/admin', adminRoutes);
 app.use('/company', companyRoutes); 
+app.use('/suppliers', supplierRoutes);
+app.use('/purchase-orders', purchaseOrderRoutes);
 
 // --- Basic 404 Handler ---
 // Catch requests that don't match any routes above

@@ -1,0 +1,96 @@
+<% locals.pageTitle = typeof title !== 'undefined' ? title : 'Receive Stock for PO' %>
+<%# po variable holds the purchase order data populated with items %>
+<% const currentPO = typeof po === 'object' && po !== null ? po : { _id: null, items: [], poNumber: 'N/A' }; %>
+<%# formData holds submitted data if re-rendering on error %>
+<% const currentFormData = typeof formData === 'object' && formData !== null ? formData : {}; %>
+
+<header class="py-3 px-6 border-b border-gray-200 bg-white shadow-sm flex-shrink-0">
+    <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold text-gray-800">
+            Receive Stock for PO #<%= currentPO.poNumber %>
+        </h2>
+        <a href="/purchase-orders/<%= currentPO._id %>" class="inline-block px-3 py-1.5 border border-gray-300 text-xs font-medium text-gray-700 rounded-md hover:bg-gray-50">
+            Back to PO Details
+        </a>
+    </div>
+</header>
+
+<section class="p-6 flex-1 overflow-y-auto">
+    <div class="max-w-4xl mx-auto">
+        <% if (typeof error === 'string' && error && error.trim() !== '') { %>
+            <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md relative" role="alert">
+                <strong class="font-bold">Error: </strong> <span class="block sm:inline"><%= error %></span>
+            </div>
+        <% } %>
+
+        <div class="bg-white p-4 border rounded-lg shadow-sm mb-6 text-sm">
+             <p><strong>Supplier:</strong> <%= currentPO.supplierId?.supplierName || 'N/A' %></p>
+             <p><strong>Deliver To:</strong> <%= currentPO.warehouseId?.name || 'N/A' %> (<%= currentPO.warehouseId?.address?.city %>)</p>
+             <p><strong>Order Date:</strong> <%= new Date(currentPO.orderDate).toLocaleDateString('en-IN') %></p>
+             <p><strong>Status:</strong> <span class="font-medium capitalize"><%= currentPO.status?.replace('_',' ') %></span></p>
+        </div>
+
+        <form action="/purchase-orders/<%= currentPO._id %>/receive" method="POST" class="bg-white p-6 border rounded-lg shadow-sm space-y-5">
+            <h3 class="text-base font-semibold text-gray-800 border-b pb-2">Enter Received Quantities</h3>
+            
+            <div class="space-y-4">
+                <% currentPO.items.forEach((item, index) => { %>
+                     <% const remainingQty = item.orderedQuantity - item.receivedQuantity; %>
+                     <% if (remainingQty > 0) { %> <%# Only show items that haven't been fully received %>
+                        <div class="grid grid-cols-5 gap-3 items-end border-b pb-3">
+                            <div class="col-span-2">
+                                <label class="block text-xs font-medium text-gray-500">Item</label>
+                                <p class="text-sm font-medium text-gray-900"><%= item.itemId?.name || 'Unknown Item' %></p>
+                                <p class="text-xs text-gray-500">(SKU: <%= item.itemId?.sku || 'N/A' %>)</p>
+                                <%# Pass item ID to backend %>
+                                <input type="hidden" name="itemIds[<%= index %>]" value="<%= item.itemId?._id %>">
+                            </div>
+                             <div>
+                                <label class="block text-xs font-medium text-gray-500">Ordered</label>
+                                <p class="text-sm text-gray-700"><%= item.orderedQuantity %></p>
+                            </div>
+                             <div>
+                                <label class="block text-xs font-medium text-gray-500">Received</label>
+                                <p class="text-sm text-gray-700"><%= item.receivedQuantity %></p>
+                            </div>
+                             <div>
+                                <label for="receivedQuantity_<%= index %>" class="block text-xs font-medium text-gray-700 mb-1">Received Now <span class="text-red-500">*</span></label>
+                                <input type="number" id="receivedQuantity_<%= index %>" name="receivedNowQuantities[<%= index %>]" 
+                                       value="<%= (currentFormData.receivedNowQuantities && currentFormData.receivedNowQuantities[index]) ? currentFormData.receivedNowQuantities[index] : '0' %>" 
+                                       min="0" 
+                                       max="<%= remainingQty %>" <%# Max is remaining qty %>
+                                       required 
+                                       class="block w-full px-2 py-1 border border-gray-300 rounded-md sm:text-sm">
+                            </div>
+                        </div>
+                     <% } else { %>
+                         <%# Optionally show already fully received items, but disabled %>
+                           <div class="grid grid-cols-5 gap-3 items-end border-b pb-3 opacity-50">
+                               <div class="col-span-2">
+                                   <label class="block text-xs font-medium text-gray-500">Item</label>
+                                   <p class="text-sm font-medium text-gray-700"><%= item.itemId?.name || 'Unknown Item' %></p>
+                                    <p class="text-xs text-gray-500">(SKU: <%= item.itemId?.sku || 'N/A' %>)</p>
+                               </div>
+                               <div> <label class="block text-xs font-medium text-gray-500">Ordered</label> <p class="text-sm text-gray-700"><%= item.orderedQuantity %></p> </div>
+                               <div> <label class="block text-xs font-medium text-gray-500">Received</label> <p class="text-sm text-green-700 font-semibold"><%= item.receivedQuantity %> (Done)</p> </div>
+                               <div> <label class="block text-xs font-medium text-gray-400 mb-1">Received Now</label> <input type="number" value="0" disabled class="block w-full px-2 py-1 border bg-gray-100 rounded-md sm:text-sm"> </div>
+                           </div>
+                     <% } %>
+                <% }); %>
+            </div>
+
+             <div>
+                <label for="notes" class="block text-sm font-medium text-gray-700 mb-1">Receiving Notes (Optional)</label>
+                <textarea id="notes" name="notes" rows="2" placeholder="e.g., Shipment damaged, Received by John Doe..."
+                          class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm"><%= currentFormData.notes || '' %></textarea>
+            </div>
+
+            <div class="mt-6 pt-5 border-t border-gray-200 flex justify-end">
+                <a href="/purchase-orders/<%= currentPO._id %>" class="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 mr-3">Cancel</a>
+                <button type="submit" class="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                    Confirm Stock Received
+                </button>
+            </div>
+        </form>
+    </div>
+</section>
