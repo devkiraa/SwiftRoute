@@ -7,6 +7,7 @@ const path = require('path');
 const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 const expressLayouts = require('express-ejs-layouts');
+const flash = require('connect-flash');
 
 // --- Session Configuration Check ---
 const sessionSecret = process.env.SESSION_SECRET;
@@ -70,6 +71,48 @@ app.use(session({
       maxAge: 1000 * 60 * 60 * 24 // Example: 1 day expiry
     }
 }));
+
+app.use(flash());
+// --- Global Middleware (Make user and flash messages available to views) ---
+app.use(async (req, res, next) => {
+  // Make user available
+  if (req.session && req.session.userId) {
+      try {
+          // Use lean() for read-only user data in views
+          const user = await mongoose.model('User').findById(req.session.userId)
+              .populate('companyId', 'companyName')
+              .populate('storeId', 'storeName')
+              .lean(); 
+          res.locals.loggedInUser = user;
+          if (user) {
+              res.locals.companyDetails = user.companyId; // Already lean
+              res.locals.storeDetails = user.storeId;   // Already lean
+          }
+      } catch (error) {
+          console.error('Error fetching user for session:', error);
+           res.locals.loggedInUser = null; // Ensure it's null on error
+           res.locals.companyDetails = null;
+           res.locals.storeDetails = null;
+      }
+  } else {
+      // Ensure these are explicitly null if no user session
+      res.locals.loggedInUser = null; 
+      res.locals.companyDetails = null;
+      res.locals.storeDetails = null;
+  }
+
+  // --- Make Flash Messages available to ALL templates ---
+  res.locals.success_msg = req.flash('success_msg'); // Gets success messages
+  res.locals.error_msg = req.flash('error_msg');     // Gets error messages
+  res.locals.error = req.flash('error');             // Gets error messages from Passport (if used) or general error
+  // You only need one error key, let's consolidate to 'error_msg' or 'error'
+  // Let's use 'error_msg' for consistency with 'success_msg' and keep 'error' for potential passport compatibility
+  res.locals.error_msg = res.locals.error_msg.length ? res.locals.error_msg : req.flash('error'); 
+  // --- End Flash Message Middleware ---
+
+  res.locals.currentPath = req.path; // For active sidebar links
+  next();
+});
 
 // --- Global Middleware for User/Company/Path ---
 // Makes loggedInUser, companyDetails, and currentPath available in all templates (via res.locals)
