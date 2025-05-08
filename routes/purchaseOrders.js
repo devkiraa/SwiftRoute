@@ -365,11 +365,195 @@ router.get('/:id', async (req, res) => {
     }
 });
 
-// TODO:
-// GET /purchase-orders/:id - View PO Details
-// GET /purchase-orders/:id/edit - Edit PO (potentially limited fields/statuses)
-// PUT /purchase-orders/:id - Update PO
-// GET /purchase-orders/:id/receive - Show Receive Stock form
-// POST /purchase-orders/:id/receive - Process Received Stock
+// GET /purchase-orders/:id/edit - Show form to edit PO
+router.get('/:id/edit', async (req, res) => {
+    const poId = req.params.id;
+    const loggedInUser = res.locals.loggedInUser;
+    console.log(`--- Accessing GET /purchase-orders/${poId}/edit ---`);
+
+    try {
+        const poToEdit = await PurchaseOrder.findById(poId)
+            .populate('supplierId', 'supplierName _id')
+            .populate('warehouseId', 'name _id')
+            .populate({ path: 'items.itemId', model: 'Item', select: 'name sku unitCost' }) // Need unitCost for default
+            .lean(); 
+
+        if (!poToEdit) throw new Error("Purchase Order not found.");
+
+        // Authorization Check
+        if (loggedInUser.role === 'warehouse_owner' && poToEdit.companyId.toString() !== (loggedInUser.companyId._id || loggedInUser.companyId).toString()) {
+            throw new Error("Access Denied: PO does not belong to your company.");
+        }
+
+        // Status Check: ONLY allow editing if status is 'ordered' (or maybe 'draft' if you add that status)
+        // Cannot edit after receiving has started.
+        if (poToEdit.status !== 'ordered') {
+             return res.redirect(`/purchase-orders/${poId}?error=${encodeURIComponent(`Cannot edit PO with status '${poToEdit.status}'.`)}`);
+        }
+
+        // Fetch data for dropdowns (scoped by company)
+        const companyId = poToEdit.companyId;
+        const companyQuery = { companyId: companyId };
+        const [suppliers, warehouses, items] = await Promise.all([
+            Supplier.find(companyQuery).select('supplierName _id').sort({supplierName: 1}).lean(),
+            Warehouse.find(companyQuery).select('name _id').sort({name: 1}).lean(),
+            // Fetch items available for this company/warehouse (warehouse doesn't change during edit)
+            Item.find({ warehouseId: poToEdit.warehouseId._id }).select('name sku unitCost _id quantity').populate('warehouseId', 'name').sort({name: 1}).lean()
+        ]);
+
+        res.render('purchase-orders/form', { 
+            title: `Edit Purchase Order #${poToEdit.poNumber}`,
+            po: poToEdit,            // Original PO data
+            formData: poToEdit,         // Pre-fill form with current data
+            items: items,             // Items available for adding in this warehouse
+            suppliers: suppliers,       // Suppliers for dropdown
+            warehouses: warehouses,     // Warehouses for dropdown (though likely disabled)
+            isEditing: true,            // Flag for the view
+            layout: './layouts/dashboard_layout'
+        });
+        console.log("Rendered PO edit form.");
+
+    } catch (err) {
+        console.error(`Error loading PO edit form for ID ${poId}:`, err);
+        res.redirect(`/purchase-orders?error=${encodeURIComponent(`Failed to load edit form: ${err.message}`)}`);
+    }
+});
+
+// PUT /purchase-orders/:id - Update Purchase Order
+router.put('/:id', async (req, res) => {
+    const poId = req.params.id;
+    const loggedInUser = res.locals.loggedInUser;
+    console.log(`--- Attempting UPDATE for PO ${poId} ---`);
+    const { supplierId, expectedDeliveryDate, notes, itemIds, orderedQuantities, unitCosts } = req.body;
+    // warehouseId and companyId typically don't change during edit
+
+    const session = await mongoose.startSession(); // Use transaction for potential future complexity
+
+    try {
+        let updatedPO = null;
+        await session.withTransaction(async () => {
+            const poToUpdate = await PurchaseOrder.findById(poId).session(session);
+            if (!poToUpdate) throw new Error("Purchase Order not found.");
+
+            // Authorization check
+            if (loggedInUser.role === 'warehouse_owner' && poToUpdate.companyId.toString() !== (loggedInUser.companyId._id || loggedInUser.companyId).toString()) {
+                throw new Error("Access Denied.");
+            }
+
+            // Status check - only allow updating 'ordered' POs via this route
+            if (poToUpdate.status !== 'ordered') {
+                 throw new Error(`Cannot update PO with status '${poToUpdate.status}'. Receiving process might have started.`);
+            }
+            
+            // Validate Items
+             const validNewItemIds = Array.isArray(itemIds) ? itemIds.filter(id => id && mongoose.Types.ObjectId.isValid(id)) : [itemIds].filter(id => id && mongoose.Types.ObjectId.isValid(id));
+             const validQuantities = Array.isArray(orderedQuantities) ? orderedQuantities.map(q => parseInt(q, 10)).filter((q, i) => itemIds[i] && q > 0) : [parseInt(orderedQuantities, 10)].filter(q => itemIds[0] && q > 0);
+             const validUnitCosts = Array.isArray(unitCosts) ? unitCosts.map(c => parseFloat(c)).filter((c, i) => itemIds[i] && c >= 0) : [parseFloat(unitCosts)].filter(c => itemIds[0] && c >= 0);
+             if (validNewItemIds.length === 0 || validNewItemIds.length !== validQuantities.length || validNewItemIds.length !== validUnitCosts.length) {
+                 throw new Error("Invalid item data: Ensure each item has a valid quantity and unit cost.");
+             }
+             
+             // Prepare updated items array
+             const updatedPoItems = validNewItemIds.map((id, index) => ({
+                 itemId: id,
+                 orderedQuantity: validQuantities[index],
+                 receivedQuantity: 0, // Reset received qty if order items change? Or only allow edits before receiving? Let's assume edit only happens before receiving.
+                 unitCost: validUnitCosts[index]
+             }));
+             
+             // Recalculate total value
+             const newTotalValue = updatedPoItems.reduce((sum, item) => sum + (item.orderedQuantity * item.unitCost), 0);
+             if (isNaN(newTotalValue)) throw new Error("Failed to calculate total value.");
+
+            // Update PO fields
+            poToUpdate.supplierId = supplierId;
+            poToUpdate.expectedDeliveryDate = expectedDeliveryDate || undefined;
+            poToUpdate.notes = notes;
+            poToUpdate.items = updatedPoItems;
+            poToUpdate.totalValue = newTotalValue;
+            poToUpdate.lastUpdated = new Date();
+            poToUpdate.lastUpdatedBy = loggedInUser._id; // Track who updated
+            
+            // Stock is NOT adjusted here, as we assume editing happens before receiving starts.
+            
+            updatedPO = await poToUpdate.save({ session });
+            console.log(`Purchase Order ${updatedPO.poNumber} updated successfully.`);
+        }); // Transaction commits
+
+        res.redirect(`/purchase-orders/${poId}?success=Purchase+Order+updated`);
+
+    } catch (err) {
+        console.error(`Error updating PO ${poId}:`, err);
+        let errorMessage = "Failed to update Purchase Order.";
+        if (err.name === 'ValidationError') { errorMessage = Object.values(err.errors).map(val => val.message).join(', '); }
+        else if (err.message) { errorMessage = err.message; }
+
+        // Re-render edit form with error
+        try {
+             const poDataForForm = await PurchaseOrder.findById(poId).populate('supplierId warehouseId items.itemId').lean() || { _id: poId };
+             const companyIdForItems = poDataForForm.companyId || loggedInUser.companyId;
+             const itemsForForm = companyIdForItems ? await Item.find({ warehouseId: poDataForForm.warehouseId }).lean() : [];
+             const suppliersForForm = companyIdForItems ? await Supplier.find({ companyId: companyIdForItems }).lean() : [];
+             const warehousesForForm = companyIdForItems ? await Warehouse.find({ companyId: companyIdForItems }).lean() : [];
+             
+             res.status(400).render('purchase-orders/form', {
+                title: `Edit Purchase Order #${poDataForForm?.poNumber || poId.slice(-6)}`, 
+                po: poDataForForm, 
+                formData: req.body, // Show submitted data with error
+                items: itemsForForm, suppliers: suppliersForForm, warehouses: warehousesForForm,
+                isEditing: true,
+                error: errorMessage, 
+                layout: './layouts/dashboard_layout'
+            });
+        } catch (renderErr) {
+              res.redirect(`/purchase-orders/${poId}?error=Update+failed+and+form+could+not+be+reloaded.`);
+        }
+    } finally {
+        await session.endSession();
+    }
+});
+
+
+// POST /purchase-orders/:id/cancel - Cancel a PO
+router.post('/:id/cancel', async (req, res) => { // Using POST for simplicity, though DELETE with check might be RESTful
+    const poId = req.params.id;
+    const loggedInUser = res.locals.loggedInUser;
+    console.log(`--- User ${loggedInUser._id} attempting CANCEL for PO ${poId} ---`);
+
+    const session = await mongoose.startSession();
+    try {
+        await session.withTransaction(async () => {
+             const poToCancel = await PurchaseOrder.findById(poId).session(session);
+             if (!poToCancel) throw new Error("Purchase Order not found.");
+
+             // Authorization
+             if (loggedInUser.role === 'warehouse_owner' && poToCancel.companyId.toString() !== (loggedInUser.companyId._id || loggedInUser.companyId).toString()) {
+                 throw new Error("Access Denied.");
+             }
+
+             // Status Check: Allow cancelling 'ordered' or 'partially_received'? 
+             if (!['ordered', 'partially_received'].includes(poToCancel.status)) {
+                 throw new Error(`Cannot cancel PO with status '${poToCancel.status}'.`);
+             }
+
+            // Just update status. Does NOT adjust stock for already received items.
+            // A separate "Return to Vendor" process would be needed for that.
+             poToCancel.status = 'cancelled';
+             poToCancel.lastUpdated = new Date();
+             poToCancel.lastUpdatedBy = loggedInUser._id; 
+             await poToCancel.save({ session });
+             console.log(`PO ${poId} cancelled.`);
+        }); // Transaction commits
+
+        res.redirect(`/purchase-orders/${poId}?success=Purchase+Order+cancelled`);
+
+    } catch (err) {
+         console.error(`Error cancelling PO ${poId}:`, err);
+         res.redirect(`/purchase-orders/${poId}?error=${encodeURIComponent(`Cancellation failed: ${err.message}`)}`);
+    } finally {
+         await session.endSession();
+    }
+});
+
 
 module.exports = router;

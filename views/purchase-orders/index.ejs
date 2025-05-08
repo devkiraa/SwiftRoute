@@ -51,7 +51,9 @@
                                 </td>
                                 <td class="px-4 py-3 whitespace-nowrap text-center space-x-2">
                                     <a href="/purchase-orders/<%= po._id %>" class="text-blue-600 hover:underline text-xs font-medium">View</a>
-                                    
+                                    <% if (['ordered'].includes(po.status)) { // Only allow edit if 'ordered' %>
+                         <a href="/purchase-orders/<%= po._id %>/edit" class="text-yellow-600 hover:underline text-xs font-medium">Edit</a>
+                    <% } %>
                                     <%# Show Receive link only if status allows %>
                                     <% if (['ordered', 'partially_received'].includes(po.status)) { %>
                                         <a href="/purchase-orders/<%= po._id %>/receive" class="text-green-600 hover:underline text-xs font-medium">Receive</a>
