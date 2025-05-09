@@ -5,9 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>SwiftRoute - Optimize Your Delivery Logistics</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"/>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"/>
     <style>
-        body { font-family: 'Inter', sans-serif; }
+        body { 
+            font-family: 'Inter', sans-serif; 
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
         #mobile-menu nav {
             transition: transform 0.3s ease-out, opacity 0.3s ease-out;
         }
@@ -37,9 +41,10 @@
         
         /* Hero Section Video Styling for Full Background */
         .hero-section-video-bg {
-            position: relative; /* Anchor for the absolute video container */
-            overflow: hidden; /* Hide any video overflow */
-            background-color: #1e293b; /* Fallback background color if video and image fail */
+            position: relative; 
+            overflow: hidden; 
+            background-color: #111827; /* Dark fallback if video fails */
+            /* min-height: 80vh; Adjust as needed or let content define height */
         }
         .hero-video-container {
             position: absolute;
@@ -47,7 +52,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            z-index: 0; /* Place video behind content */
+            z-index: 0; 
             overflow: hidden; 
         }
         .hero-video-container video {
@@ -59,36 +64,45 @@
             min-width: 100%; 
             min-height: 100%; 
             transform: translate(-50%, -50%);
-            object-fit: cover; /* Crucial for background video effect */
+            object-fit: cover; 
             pointer-events: none; 
         }
-        .hero-content-overlay {
-            position: relative; /* Ensure this is above the video */
-            z-index: 1; /* Higher z-index than the video */
+        .video-overlay { 
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(17, 24, 39, 0.6); /* Darker overlay for better contrast */
+            z-index: 1;
         }
-        .fallback-image-bg { /* Styling for the fallback image if video fails */
+        .hero-content-container { /* Renamed from hero-content-overlay to avoid confusion */
+            position: relative; 
+            z-index: 2; 
+        }
+        .fallback-image-bg { 
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
             object-fit: cover;
-            z-index: -1; /* Behind the video element, but above the hero section's own bg */
+            z-index: -1; 
         }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-800">
+<body class="bg-gray-100 text-gray-800">
 
     <header class="bg-white shadow-sm sticky top-0 z-50">
         <div class="container mx-auto px-6 py-4 flex justify-between items-center">
             <a href="/" class="text-2xl font-bold text-indigo-600 hover:text-indigo-700">SwiftRoute</a>
             <nav class="hidden md:flex space-x-6 items-center">
-                <a class="text-gray-600 hover:text-indigo-600" href="#features">Features</a>
-                <a class="text-gray-600 hover:text-indigo-600" href="#how-it-works">How It Works</a>
-                <a class="text-gray-600 hover:text-indigo-600" href="#pricing">Pricing</a>
-                <a class="text-gray-600 hover:text-indigo-600" href="#testimonials">Testimonials</a>
-                <a class="text-gray-600 hover:text-indigo-600" href="/login">Login</a>
-                <a class="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-md transition text-sm" href="/register">Get Started</a>
+                <a class="text-gray-700 hover:text-indigo-600 font-medium" href="#features">Features</a>
+                <a class="text-gray-700 hover:text-indigo-600 font-medium" href="#how-it-works">How It Works</a>
+                <a class="text-gray-700 hover:text-indigo-600 font-medium" href="#pricing">Pricing</a>
+                <a class="text-gray-700 hover:text-indigo-600 font-medium" href="#testimonials">Testimonials</a>
+                <a class="text-gray-700 hover:text-indigo-600 font-medium" href="/login">Login</a>
+                <a class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-5 rounded-lg transition duration-200 text-sm" href="/register">Get Started</a>
             </nav>
             <button id="mobile-menu-button" class="md:hidden p-2 text-gray-600 hover:text-indigo-600" aria-label="Open Menu" aria-expanded="false" aria-controls="mobile-nav-links">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
@@ -96,12 +110,12 @@
         </div>
         <div id="mobile-menu" class="md:hidden">
             <nav id="mobile-nav-links" class="hidden absolute top-full left-0 w-full bg-white shadow-lg py-2 z-40">
-                <a class="block px-6 py-3 text-gray-600 hover:text-indigo-600 hover:bg-gray-100" href="#features">Features</a>
-                <a class="block px-6 py-3 text-gray-600 hover:text-indigo-600 hover:bg-gray-100" href="#how-it-works">How It Works</a>
-                <a class="block px-6 py-3 text-gray-600 hover:text-indigo-600 hover:bg-gray-100" href="#pricing">Pricing</a>
-                <a class="block px-6 py-3 text-gray-600 hover:text-indigo-600 hover:bg-gray-100" href="#testimonials">Testimonials</a>
-                <a class="block px-6 py-3 text-gray-600 hover:text-indigo-600 hover:bg-gray-100" href="/login">Login</a>
-                <a class="block mx-4 my-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 px-4 rounded-md transition text-center" href="/register">Get Started</a>
+                <a class="block px-6 py-3 text-gray-700 hover:text-indigo-600 hover:bg-gray-50" href="#features">Features</a>
+                <a class="block px-6 py-3 text-gray-700 hover:text-indigo-600 hover:bg-gray-50" href="#how-it-works">How It Works</a>
+                <a class="block px-6 py-3 text-gray-700 hover:text-indigo-600 hover:bg-gray-50" href="#pricing">Pricing</a>
+                <a class="block px-6 py-3 text-gray-700 hover:text-indigo-600 hover:bg-gray-50" href="#testimonials">Testimonials</a>
+                <a class="block px-6 py-3 text-gray-700 hover:text-indigo-600 hover:bg-gray-50" href="/login">Login</a>
+                <a class="block mx-4 my-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 px-4 rounded-lg transition text-center" href="/register">Get Started</a>
             </nav>
         </div>
     </header>
@@ -115,18 +129,19 @@
             <img src="https://images.unsplash.com/photo-1604782286058-5f0109b54f7a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=MnwyODE1MDl8MHwxfGFsbHx8fHx8fHx8fDE2MjYxOTI0Mzk&ixlib=rb-1.2.1&q=80&w=1080" 
                  alt="Delivery logistics background" 
                  class="fallback-image-bg" />
-                 </div>
+        </div>
+        <div class="video-overlay"></div>
 
-        <div class="hero-content-overlay container mx-auto px-6 pt-16 pb-20 md:pt-24 md:pb-28 flex flex-col lg:flex-row items-center">
-            <div class="w-full lg:w-1/2 text-center lg:text-left mb-10 lg:mb-0 lg:pr-10">
-                <h1 class="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white mb-4 leading-tight" style="text-shadow: 1px 1px 3px rgba(0,0,0,0.5);">
+        <div class="hero-content-container container mx-auto px-6 pt-20 pb-20 md:pt-32 md:pb-32 lg:pt-40 lg:pb-40 flex flex-col lg:flex-row items-center">
+            <div class="w-full lg:w-3/5 text-center lg:text-left mb-10 lg:mb-0">
+                <h1 class="text-4xl sm:text-5xl md:text-6xl font-extrabold text-white mb-4 leading-tight" style="text-shadow: 1px 1px 3px rgba(0,0,0,0.7);">
                     Deliver Smarter,<br /> Not Harder.
                 </h1>
-                <p class="text-lg md:text-xl text-indigo-100 mb-8 max-w-xl mx-auto lg:mx-0" style="text-shadow: 1px 1px 2px rgba(0,0,0,0.5);">
+                <p class="text-lg md:text-xl text-indigo-100 mb-8 max-w-xl mx-auto lg:mx-0" style="text-shadow: 1px 1px 2px rgba(0,0,0,0.7);">
                     SwiftRoute provides intelligent route optimization, real-time tracking, and seamless inventory management to streamline your logistics, reduce costs, and delight your customers.
                 </p>
                 <div class="flex flex-col sm:flex-row justify-center lg:justify-start gap-4">
-                    <a href="/register" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-lg transition duration-200 text-center text-lg shadow-md hover:shadow-lg">
+                    <a href="/register" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 px-8 rounded-lg transition duration-200 text-center text-lg shadow-md hover:shadow-lg">
                         Start Free Trial
                     </a>
                      <a href="#features" class="bg-white hover:bg-gray-100 text-indigo-700 font-semibold py-3 px-8 rounded-lg transition duration-200 border border-gray-300 text-center text-lg shadow-md hover:shadow-lg">
@@ -134,78 +149,80 @@
                     </a>
                 </div>
             </div>
-            </div>
+            <div class="w-full lg:w-2/5">
+                </div>
+        </div>
     </section>
 
-    <section id="features" class="bg-white py-16 md:py-20">
+    <section id="features" class="bg-white py-16 md:py-24">
         <div class="container mx-auto px-6">
-            <h2 class="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-6">Why Choose SwiftRoute?</h2>
-            <p class="text-center text-gray-600 mb-12 text-lg max-w-2xl mx-auto">Powerful tools to optimize every aspect of your delivery operations.</p>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                <div class="text-center p-6 bg-gray-50 rounded-lg shadow-md hover:shadow-xl transition-shadow">
-                    <div class="feature-icon-bg rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+            <h2 class="text-3xl md:text-4xl font-bold text-center text-gray-900 mb-6">Why Choose SwiftRoute?</h2>
+            <p class="text-center text-gray-600 mb-16 text-lg max-w-2xl mx-auto">Powerful tools to optimize every aspect of your delivery operations.</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+                <div class="text-center p-8 bg-gray-50 rounded-xl shadow-lg hover:shadow-2xl transition-shadow duration-300">
+                    <div class="feature-icon-bg rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-5">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8">
                           <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
                         </svg>
                     </div>
-                    <h4 class="text-xl font-semibold mb-2 text-gray-800">Optimized Routing</h4>
+                    <h4 class="text-xl font-semibold mb-2 text-gray-900">Optimized Routing</h4>
                     <p class="text-gray-600">
                         Generate the most efficient multi-stop routes using advanced algorithms, saving time and fuel costs daily.
                     </p>
                 </div>
-                <div class="text-center p-6 bg-gray-50 rounded-lg shadow-md hover:shadow-xl transition-shadow">
-                    <div class="feature-icon-bg rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                <div class="text-center p-8 bg-gray-50 rounded-xl shadow-lg hover:shadow-2xl transition-shadow duration-300">
+                    <div class="feature-icon-bg rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-5">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8">
                           <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10.5 11.25h3M12 15V7.5M3 7.5h18M3 7.5a2.25 2.25 0 00-2.25 2.25v1.5A2.25 2.25 0 003 13.5h18a2.25 2.25 0 002.25-2.25v-1.5A2.25 2.25 0 0021 7.5H3z" />
                         </svg>
                     </div>
-                    <h4 class="text-xl font-semibold mb-2 text-gray-800">Inventory Management</h4>
+                    <h4 class="text-xl font-semibold mb-2 text-gray-900">Inventory Management</h4>
                     <p class="text-gray-600">
                         Track stock levels across multiple warehouses, manage items, and integrate inventory with your orders seamlessly.
                     </p>
                 </div>
-                <div class="text-center p-6 bg-gray-50 rounded-lg shadow-md hover:shadow-xl transition-shadow">
-                    <div class="feature-icon-bg rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                <div class="text-center p-8 bg-gray-50 rounded-xl shadow-lg hover:shadow-2xl transition-shadow duration-300">
+                    <div class="feature-icon-bg rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-5">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8">
                           <path stroke-linecap="round" stroke-linejoin="round" d="M9 6.75V15m0 0v2.25m0-2.25h1.5M9 15H3.75M15 6.75V15m0 0v2.25m0-2.25h1.5M15 15h-1.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                           <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 15.75L18 18M8.25 8.25L6 6M6 6l2.25 2.25" />
                         </svg>
                     </div>
-                    <h4 class="text-xl font-semibold mb-2 text-gray-800">Visual Map Interface</h4>
+                    <h4 class="text-xl font-semibold mb-2 text-gray-900">Visual Map Interface</h4>
                     <p class="text-gray-600">
                         Leverage interactive maps to visualize routes, store locations, and delivery progress.
                     </p>
                 </div>
-                <div class="text-center p-6 bg-gray-50 rounded-lg shadow-md hover:shadow-xl transition-shadow">
-                    <div class="feature-icon-bg rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                <div class="text-center p-8 bg-gray-50 rounded-xl shadow-lg hover:shadow-2xl transition-shadow duration-300">
+                    <div class="feature-icon-bg rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-5">
                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8">
                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
                          </svg>
                     </div>
-                    <h4 class="text-xl font-semibold mb-2 text-gray-800">Real-Time Tracking</h4>
+                    <h4 class="text-xl font-semibold mb-2 text-gray-900">Real-Time Tracking</h4>
                     <p class="text-gray-600">
                         Monitor your fleet's location in real-time, provide accurate ETAs to customers, and respond quickly to delays.
                     </p>
                 </div>
-                <div class="text-center p-6 bg-gray-50 rounded-lg shadow-md hover:shadow-xl transition-shadow">
-                    <div class="feature-icon-bg rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                <div class="text-center p-8 bg-gray-50 rounded-xl shadow-lg hover:shadow-2xl transition-shadow duration-300">
+                    <div class="feature-icon-bg rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-5">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8">
                           <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
                         </svg>
                     </div>
-                    <h4 class="text-xl font-semibold mb-2 text-gray-800">Analytics & Reporting</h4>
+                    <h4 class="text-xl font-semibold mb-2 text-gray-900">Analytics & Reporting</h4>
                     <p class="text-gray-600">
                         Gain insights into delivery performance, driver efficiency, and operational costs with comprehensive reports.
                     </p>
                 </div>
-                <div class="text-center p-6 bg-gray-50 rounded-lg shadow-md hover:shadow-xl transition-shadow">
-                    <div class="feature-icon-bg rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                <div class="text-center p-8 bg-gray-50 rounded-xl shadow-lg hover:shadow-2xl transition-shadow duration-300">
+                    <div class="feature-icon-bg rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-5">
                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8">
                            <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3" />
                          </svg>
                     </div>
-                    <h4 class="text-xl font-semibold mb-2 text-gray-800">Driver Mobile App</h4>
+                    <h4 class="text-xl font-semibold mb-2 text-gray-900">Driver Mobile App</h4>
                     <p class="text-gray-600">
                         Equip your drivers with an intuitive mobile app for route navigation, proof of delivery, and communication.
                     </p>
@@ -214,55 +231,55 @@
         </div>
     </section>
 
-    <section id="how-it-works" class="bg-gray-100 py-16 md:py-20">
+    <section id="how-it-works" class="bg-gray-50 py-16 md:py-24">
         <div class="container mx-auto px-6">
-            <h2 class="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-6">Get Started in Minutes</h2>
-            <p class="text-center text-gray-600 mb-12 text-lg max-w-2xl mx-auto">Streamline your logistics with our simple, powerful platform.</p>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 text-center">
-                <div class="p-6">
-                    <div class="feature-icon-bg rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-5 shadow-lg">
+            <h2 class="text-3xl md:text-4xl font-bold text-center text-gray-900 mb-6">Get Started in Minutes</h2>
+            <p class="text-center text-gray-600 mb-16 text-lg max-w-2xl mx-auto">Streamline your logistics with our simple, powerful platform.</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 text-center">
+                 <div class="p-6">
+                    <div class="feature-icon-bg rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6 shadow-lg">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-10 h-10">
                           <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
                         </svg>
                     </div>
-                    <h4 class="text-xl font-semibold mb-2 text-gray-800">1. Sign Up & Connect</h4>
+                    <h4 class="text-xl font-semibold mb-2 text-gray-900">1. Sign Up & Connect</h4>
                     <p class="text-gray-600">Easily create your account and integrate your sales channels or upload delivery data.</p>
                 </div>
                 <div class="p-6">
-                    <div class="feature-icon-bg rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-5 shadow-lg">
+                    <div class="feature-icon-bg rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6 shadow-lg">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-10 h-10">
                           <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h12A2.25 2.25 0 0020.25 14.25V3M3.75 3l-1.48-1.48M3.75 3h16.5M13.5 3V1.5m0 9V1.5m0 9H10.5m3 0H16.5m-3 0V7.5" />
                         </svg>
                     </div>
-                    <h4 class="text-xl font-semibold mb-2 text-gray-800">2. Plan & Optimize</h4>
+                    <h4 class="text-xl font-semibold mb-2 text-gray-900">2. Plan & Optimize</h4>
                     <p class="text-gray-600">Input destinations, vehicle capacities, and driver schedules. Our AI generates efficient routes.</p>
                 </div>
                 <div class="p-6">
-                    <div class="feature-icon-bg rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-5 shadow-lg">
+                    <div class="feature-icon-bg rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6 shadow-lg">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-10 h-10">
                           <path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
                         </svg>
                     </div>
-                    <h4 class="text-xl font-semibold mb-2 text-gray-800">3. Dispatch & Track</h4>
+                    <h4 class="text-xl font-semibold mb-2 text-gray-900">3. Dispatch & Track</h4>
                     <p class="text-gray-600">Assign routes via our mobile app. Monitor progress in real-time and keep customers informed.</p>
                 </div>
                 <div class="p-6">
-                    <div class="feature-icon-bg rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-5 shadow-lg">
+                    <div class="feature-icon-bg rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6 shadow-lg">
                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-10 h-10">
                            <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z" />
                          </svg>
                     </div>
-                    <h4 class="text-xl font-semibold mb-2 text-gray-800">4. Analyze & Improve</h4>
+                    <h4 class="text-xl font-semibold mb-2 text-gray-900">4. Analyze & Improve</h4>
                     <p class="text-gray-600">Access detailed reports on performance, costs, and efficiency to refine your operations.</p>
                 </div>
             </div>
         </div>
     </section>
 
-    <section id="pricing" class="bg-white py-16 md:py-20">
+    <section id="pricing" class="bg-white py-16 md:py-24">
         <div class="container mx-auto px-6 text-center">
-            <h2 class="text-3xl md:text-4xl font-bold text-gray-800 mb-4">Flexible Pricing for Every Fleet</h2>
-            <p class="text-gray-600 mb-8 text-lg max-w-2xl mx-auto">Choose the plan that's right for your business. No hidden fees, cancel anytime.</p>
+            <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Flexible Pricing for Every Fleet</h2>
+            <p class="text-gray-600 mb-12 text-lg max-w-2xl mx-auto">Choose the plan that's right for your business. No hidden fees, cancel anytime.</p>
             
             <div class="mb-10 max-w-xs mx-auto">
                 <label for="country-selector" class="block text-sm font-medium text-gray-700 mb-1">Select Your Country:</label>
@@ -275,7 +292,7 @@
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-                <div class="pricing-tier border border-gray-200 rounded-lg p-8 shadow-lg bg-gray-50 flex flex-col">
+                <div class="pricing-tier border border-gray-200 rounded-xl p-8 shadow-lg bg-gray-50 flex flex-col hover:border-indigo-300">
                     <h3 class="text-2xl font-semibold text-indigo-600 mb-3">Starter</h3>
                     <p class="text-4xl font-bold text-gray-800 mb-2">
                         <span class="price-currency">$</span><span class="price-value" data-price-us="29" data-price-in="1999" data-price-gb="25" data-price-de="27">29</span>
@@ -283,41 +300,41 @@
                     </p>
                     <p class="text-gray-500 mb-6">For small businesses & individuals.</p>
                     <ul class="text-left space-y-3 text-gray-600 mb-8 flex-grow">
-                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Basic Route Optimization</li>
-                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Up to 50 Stops/Route</li>
-                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Driver Mobile App (Basic)</li>
-                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Email Support</li>
+                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Basic Route Optimization</li>
+                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Up to 50 Stops/Route</li>
+                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Driver Mobile App (Basic)</li>
+                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Email Support</li>
                     </ul>
-                    <a href="/register?plan=starter" class="mt-auto w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg transition duration-200">Choose Starter</a>
+                    <a href="/register?plan=starter" class="mt-auto w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 px-6 rounded-lg transition duration-200">Choose Starter</a>
                 </div>
-                <div class="pricing-tier border-2 border-indigo-600 rounded-lg p-8 shadow-xl bg-white relative flex flex-col">
-                    <span class="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-indigo-600 text-white text-xs font-semibold px-3 py-1 rounded-full">POPULAR</span>
-                    <h3 class="text-2xl font-semibold text-indigo-600 mb-3">Growth</h3>
+                <div class="pricing-tier border-2 border-indigo-500 rounded-xl p-8 shadow-2xl bg-white relative flex flex-col">
+                    <span class="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-4 bg-indigo-500 text-white text-xs font-semibold px-4 py-1.5 rounded-full uppercase tracking-wider">Popular</span>
+                    <h3 class="text-2xl font-semibold text-indigo-600 mb-3 mt-3">Growth</h3>
                      <p class="text-4xl font-bold text-gray-800 mb-2">
                         <span class="price-currency">$</span><span class="price-value" data-price-us="59" data-price-in="3999" data-price-gb="49" data-price-de="55">59</span>
                         <span class="text-xl font-normal text-gray-500">/driver/mo</span>
                     </p>
                     <p class="text-gray-500 mb-6">For growing businesses scaling operations.</p>
                     <ul class="text-left space-y-3 text-gray-600 mb-8 flex-grow">
-                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Advanced Route Optimization</li>
-                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Unlimited Stops/Route</li>
-                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Real-Time Tracking</li>
-                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Driver Mobile App (Full)</li>
-                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Basic Analytics</li>
-                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Priority Email & Chat Support</li>
+                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Advanced Route Optimization</li>
+                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Unlimited Stops/Route</li>
+                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Real-Time Tracking</li>
+                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Driver Mobile App (Full)</li>
+                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Basic Analytics</li>
+                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Priority Email & Chat Support</li>
                     </ul>
                     <a href="/register?plan=growth" class="mt-auto w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg transition duration-200">Choose Growth</a>
                 </div>
-                <div class="pricing-tier border border-gray-200 rounded-lg p-8 shadow-lg bg-gray-50 flex flex-col">
+                <div class="pricing-tier border border-gray-200 rounded-xl p-8 shadow-lg bg-gray-50 flex flex-col hover:border-indigo-300">
                     <h3 class="text-2xl font-semibold text-indigo-600 mb-3">Enterprise</h3>
                     <p class="text-4xl font-bold text-gray-800 mb-2">Custom</p>
                     <p class="text-gray-500 mb-6">Tailored solutions for large operations.</p>
                     <ul class="text-left space-y-3 text-gray-600 mb-8 flex-grow">
-                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>All Growth Features +</li>
-                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Custom Integrations & API</li>
-                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Advanced Analytics & Reporting</li>
-                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Dedicated Account Manager</li>
-                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Volume Discounts</li>
+                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>All Growth Features +</li>
+                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Custom Integrations & API</li>
+                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Advanced Analytics & Reporting</li>
+                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Dedicated Account Manager</li>
+                        <li class="flex items-center"><svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>Volume Discounts</li>
                     </ul>
                     <a href="/contact-sales" class="mt-auto w-full bg-gray-700 hover:bg-gray-800 text-white font-semibold py-3 px-6 rounded-lg transition duration-200">Contact Sales</a>
                 </div>
@@ -325,96 +342,96 @@
         </div>
     </section>
 
-    <section id="testimonials" class="bg-indigo-600 py-16 md:py-20">
+    <section id="testimonials" class="bg-indigo-600 py-16 md:py-24">
         <div class="container mx-auto px-6">
             <h2 class="text-3xl md:text-4xl font-bold text-center text-white mb-6">Trusted by Businesses Like Yours</h2>
-            <p class="text-center text-indigo-100 mb-12 text-lg max-w-2xl mx-auto">Hear what our customers have to say about SwiftRoute.</p>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                <div class="testimonial-card p-8 rounded-lg shadow-lg">
-                    <img src="https://placehold.co/80x80/E0E7FF/4A5568?text=JD" alt="Jane Doe" class="w-20 h-20 rounded-full mx-auto mb-4 border-2 border-indigo-200">
-                    <p class="text-gray-600 italic mb-4">"SwiftRoute has revolutionized our delivery process! We're saving hours each day on route planning, and our fuel costs have dropped significantly."</p>
-                    <p class="font-semibold text-gray-800">Jane Doe</p>
-                    <p class="text-sm text-indigo-700">Operations Manager, FreshDeliveries Co.</p>
+            <p class="text-center text-indigo-100 mb-16 text-lg max-w-2xl mx-auto">Hear what our customers have to say about SwiftRoute.</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+                <div class="testimonial-card p-8 rounded-xl shadow-xl">
+                    <img src="https://placehold.co/80x80/E0E7FF/4A5568?text=JD" alt="Jane Doe" class="w-20 h-20 rounded-full mx-auto mb-5 border-2 border-indigo-200">
+                    <p class="text-gray-600 italic mb-4 text-center">"SwiftRoute has revolutionized our delivery process! We're saving hours each day on route planning, and our fuel costs have dropped significantly."</p>
+                    <p class="font-semibold text-gray-900 text-center">Jane Doe</p>
+                    <p class="text-sm text-indigo-700 text-center">Operations Manager, FreshDeliveries Co.</p>
                 </div>
-                <div class="testimonial-card p-8 rounded-lg shadow-lg">
-                    <img src="https://placehold.co/80x80/E0E7FF/4A5568?text=RS" alt="Robert Smith" class="w-20 h-20 rounded-full mx-auto mb-4 border-2 border-indigo-200">
-                    <p class="text-gray-600 italic mb-4">"The real-time tracking and customer notifications are fantastic. Our customer satisfaction has soared since we started using SwiftRoute."</p>
-                    <p class="font-semibold text-gray-800">Robert Smith</p>
-                    <p class="text-sm text-indigo-700">Owner, QuickParcel Services</p>
+                <div class="testimonial-card p-8 rounded-xl shadow-xl">
+                    <img src="https://placehold.co/80x80/E0E7FF/4A5568?text=RS" alt="Robert Smith" class="w-20 h-20 rounded-full mx-auto mb-5 border-2 border-indigo-200">
+                    <p class="text-gray-600 italic mb-4 text-center">"The real-time tracking and customer notifications are fantastic. Our customer satisfaction has soared since we started using SwiftRoute."</p>
+                    <p class="font-semibold text-gray-900 text-center">Robert Smith</p>
+                    <p class="text-sm text-indigo-700 text-center">Owner, QuickParcel Services</p>
                 </div>
-                <div class="testimonial-card p-8 rounded-lg shadow-lg">
-                    <img src="https://placehold.co/80x80/E0E7FF/4A5568?text=AM" alt="Alice Miller" class="w-20 h-20 rounded-full mx-auto mb-4 border-2 border-indigo-200">
-                    <p class="text-gray-600 italic mb-4">"The inventory management feature is a lifesaver. It's so much easier to keep track of stock across our depots. Highly recommended!"</p>
-                    <p class="font-semibold text-gray-800">Alice Miller</p>
-                    <p class="text-sm text-indigo-700">Logistics Coordinator, Urban Goods Inc.</p>
+                <div class="testimonial-card p-8 rounded-xl shadow-xl">
+                    <img src="https://placehold.co/80x80/E0E7FF/4A5568?text=AM" alt="Alice Miller" class="w-20 h-20 rounded-full mx-auto mb-5 border-2 border-indigo-200">
+                    <p class="text-gray-600 italic mb-4 text-center">"The inventory management feature is a lifesaver. It's so much easier to keep track of stock across our depots. Highly recommended!"</p>
+                    <p class="font-semibold text-gray-900 text-center">Alice Miller</p>
+                    <p class="text-sm text-indigo-700 text-center">Logistics Coordinator, Urban Goods Inc.</p>
                 </div>
             </div>
         </div>
     </section>
 
-    <section class="bg-gray-100 py-16 md:py-20">
+    <section class="bg-gray-50 py-16 md:py-24"> 
         <div class="container mx-auto px-6 text-center">
-            <h2 class="text-3xl font-bold text-gray-800 mb-4">Ready to Optimize Your Logistics?</h2>
-            <p class="text-gray-600 mb-8 max-w-2xl mx-auto">
+            <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-5">Ready to Optimize Your Logistics?</h2>
+            <p class="text-gray-600 mb-10 max-w-2xl mx-auto text-lg">
                 Join hundreds of businesses already benefiting from SwiftRoute. Sign up for a free trial or explore our plans to find the perfect fit.
             </p>
-            <a href="/register" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-10 rounded-lg shadow-lg hover:shadow-xl transition duration-200 text-lg">
+            <a href="/register" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-10 rounded-lg shadow-lg hover:shadow-xl transition duration-300 text-lg transform hover:scale-105">
                 Get Started Today
             </a>
         </div>
     </section>
 
     <footer class="bg-gray-900 text-gray-400">
-        <div class="container mx-auto px-6 py-12">
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
+        <div class="container mx-auto px-6 py-16">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 mb-10">
                 <div>
                     <a href="/" class="text-2xl font-bold text-indigo-400 hover:text-indigo-300">SwiftRoute</a>
-                    <p class="mt-2 text-sm">Optimize your delivery logistics, reduce costs, and delight your customers.</p>
-                    <div class="mt-4 flex space-x-4">
-                        <a href="#" class="hover:text-gray-200" aria-label="Facebook"><svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M9 8h-3v4h3v12h5v-12h3.642l.358-4h-4v-1.667c0-.955.192-1.333 1.115-1.333h2.885v-5h-3.808c-3.596 0-5.192 1.583-5.192 4.615v3.385z"></path></svg></a>
-                        <a href="#" class="hover:text-gray-200" aria-label="Twitter"><svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M24 4.557c-.883.392-1.832.656-2.828.775 1.017-.609 1.798-1.574 2.165-2.724-.951.564-2.005.974-3.127 1.195-.897-.957-2.178-1.555-3.594-1.555-3.179 0-5.515 2.966-4.797 6.045-4.091-.205-7.719-2.165-10.148-5.144-.422.724-.665 1.56-.665 2.452 0 1.733.882 3.261 2.228 4.158-.819-.026-1.594-.251-2.268-.628v.08c0 2.423 1.722 4.441 3.999 4.907-.418.113-.863.173-1.324.173-.321 0-.633-.031-.937-.091.636 1.988 2.484 3.439 4.674 3.48-1.712 1.341-3.869 2.142-6.217 2.142-.404 0-.802-.024-1.195-.07 2.213 1.418 4.843 2.242 7.674 2.242 9.209 0 14.245-7.636 14.245-14.245 0-.217-.005-.433-.014-.648a10.23 10.23 0 002.51-2.608z"></path></svg></a>
-                        <a href="#" class="hover:text-gray-200" aria-label="LinkedIn"><svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M4.98 3.5c0 1.381-1.11 2.5-2.48 2.5s-2.48-1.119-2.48-2.5c0-1.38 1.11-2.5 2.48-2.5s2.48 1.12 2.48 2.5zm.02 4.5h-5v16h5v-16zm7.982 0h-4.968v16h4.969v-8.399c0-4.67 6.029-4.488 6.029 0v8.399h4.988v-10.131c0-7.88-8.922-7.594-11.018-3.714v-2.155z"></path></svg></a>
+                    <p class="mt-3 text-sm">Optimize your delivery logistics, reduce costs, and delight your customers.</p>
+                    <div class="mt-6 flex space-x-5">
+                        <a href="#" class="text-gray-400 hover:text-indigo-400 transition-colors" aria-label="Facebook"><svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M9 8h-3v4h3v12h5v-12h3.642l.358-4h-4v-1.667c0-.955.192-1.333 1.115-1.333h2.885v-5h-3.808c-3.596 0-5.192 1.583-5.192 4.615v3.385z"></path></svg></a>
+                        <a href="#" class="text-gray-400 hover:text-indigo-400 transition-colors" aria-label="Twitter"><svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M24 4.557c-.883.392-1.832.656-2.828.775 1.017-.609 1.798-1.574 2.165-2.724-.951.564-2.005.974-3.127 1.195-.897-.957-2.178-1.555-3.594-1.555-3.179 0-5.515 2.966-4.797 6.045-4.091-.205-7.719-2.165-10.148-5.144-.422.724-.665 1.56-.665 2.452 0 1.733.882 3.261 2.228 4.158-.819-.026-1.594-.251-2.268-.628v.08c0 2.423 1.722 4.441 3.999 4.907-.418.113-.863.173-1.324.173-.321 0-.633-.031-.937-.091.636 1.988 2.484 3.439 4.674 3.48-1.712 1.341-3.869 2.142-6.217 2.142-.404 0-.802-.024-1.195-.07 2.213 1.418 4.843 2.242 7.674 2.242 9.209 0 14.245-7.636 14.245-14.245 0-.217-.005-.433-.014-.648a10.23 10.23 0 002.51-2.608z"></path></svg></a>
+                        <a href="#" class="text-gray-400 hover:text-indigo-400 transition-colors" aria-label="LinkedIn"><svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M4.98 3.5c0 1.381-1.11 2.5-2.48 2.5s-2.48-1.119-2.48-2.5c0-1.38 1.11-2.5 2.48-2.5s2.48 1.12 2.48 2.5zm.02 4.5h-5v16h5v-16zm7.982 0h-4.968v16h4.969v-8.399c0-4.67 6.029-4.488 6.029 0v8.399h4.988v-10.131c0-7.88-8.922-7.594-11.018-3.714v-2.155z"></path></svg></a>
                     </div>
                 </div>
 
                 <div>
-                    <h5 class="font-semibold text-gray-200 mb-3">Product</h5>
-                    <ul class="space-y-2">
-                        <li><a href="#features" class="hover:text-indigo-300">Features</a></li>
-                        <li><a href="#pricing" class="hover:text-indigo-300">Pricing</a></li>
-                        <li><a href="/integrations" class="hover:text-indigo-300">Integrations</a></li>
-                        <li><a href="/mobile-app" class="hover:text-indigo-300">Mobile App</a></li>
-                        <li><a href="/status" class="hover:text-indigo-300">Status</a></li>
+                    <h5 class="font-semibold text-gray-100 mb-4">Product</h5>
+                    <ul class="space-y-3">
+                        <li><a href="#features" class="hover:text-indigo-300 transition-colors">Features</a></li>
+                        <li><a href="#pricing" class="hover:text-indigo-300 transition-colors">Pricing</a></li>
+                        <li><a href="/integrations" class="hover:text-indigo-300 transition-colors">Integrations</a></li>
+                        <li><a href="/mobile-app" class="hover:text-indigo-300 transition-colors">Mobile App</a></li>
+                        <li><a href="/status" class="hover:text-indigo-300 transition-colors">Status</a></li>
                     </ul>
                 </div>
 
                 <div>
-                    <h5 class="font-semibold text-gray-200 mb-3">Company</h5>
-                    <ul class="space-y-2">
-                        <li><a href="/about" class="hover:text-indigo-300">About Us</a></li>
-                        <li><a href="/careers" class="hover:text-indigo-300">Careers</a></li>
-                        <li><a href="/blog" class="hover:text-indigo-300">Blog</a></li>
-                        <li><a href="/contact" class="hover:text-indigo-300">Contact Us</a></li>
+                    <h5 class="font-semibold text-gray-100 mb-4">Company</h5>
+                    <ul class="space-y-3">
+                        <li><a href="/about" class="hover:text-indigo-300 transition-colors">About Us</a></li>
+                        <li><a href="/careers" class="hover:text-indigo-300 transition-colors">Careers</a></li>
+                        <li><a href="/blog" class="hover:text-indigo-300 transition-colors">Blog</a></li>
+                        <li><a href="/contact" class="hover:text-indigo-300 transition-colors">Contact Us</a></li>
                     </ul>
                 </div>
 
                 <div>
-                    <h5 class="font-semibold text-gray-200 mb-3">Resources</h5>
-                    <ul class="space-y-2">
-                        <li><a href="/help-center" class="hover:text-indigo-300">Help Center</a></li>
-                        <li><a href="/api-docs" class="hover:text-indigo-300">API Documentation</a></li>
-                        <li><a href="/case-studies" class="hover:text-indigo-300">Case Studies</a></li>
-                        <li><a href="/webinars" class="hover:text-indigo-300">Webinars</a></li>
+                    <h5 class="font-semibold text-gray-100 mb-4">Resources</h5>
+                    <ul class="space-y-3">
+                        <li><a href="/help-center" class="hover:text-indigo-300 transition-colors">Help Center</a></li>
+                        <li><a href="/api-docs" class="hover:text-indigo-300 transition-colors">API Documentation</a></li>
+                        <li><a href="/case-studies" class="hover:text-indigo-300 transition-colors">Case Studies</a></li>
+                        <li><a href="/webinars" class="hover:text-indigo-300 transition-colors">Webinars</a></li>
                     </ul>
                 </div>
             </div>
-            <div class="border-t border-gray-700 pt-8 text-center">
-                <p class="text-sm">© <span id="currentYear"></span> SwiftRoute. All rights reserved.</p>
-                <div class="mt-2 space-x-4 text-sm">
-                    <a href="/privacy" class="hover:text-indigo-300">Privacy Policy</a>
-                    <a href="/terms" class="hover:text-indigo-300">Terms of Service</a>
+            <div class="border-t border-gray-700 pt-8 mt-8 text-center">
+                <p class="text-sm">&copy; <span id="currentYear"></span> SwiftRoute. All rights reserved.</p>
+                <div class="mt-3 space-x-5 text-sm">
+                    <a href="/privacy" class="hover:text-indigo-300 transition-colors">Privacy Policy</a>
+                    <a href="/terms" class="hover:text-indigo-300 transition-colors">Terms of Service</a>
                 </div>
-                 <p class="text-xs mt-3">Powered by Smart Logistics Technology</p>
+                 <p class="text-xs mt-4">Powered by Smart Logistics Technology</p>
             </div>
         </div>
     </footer>
@@ -430,10 +447,10 @@
             mobileNav.classList.toggle('hidden');
             mobileNav.classList.toggle('block');
 
-            if (!isExpanded) { // If menu is now open
+            if (!isExpanded) { 
                 menuButton.innerHTML = `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>`;
                 menuButton.setAttribute('aria-label', 'Close Menu');
-            } else { // If menu is now closed
+            } else { 
                 menuButton.innerHTML = `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>`;
                 menuButton.setAttribute('aria-label', 'Open Menu');
             }
@@ -488,48 +505,15 @@
             // Video Playback Logic
             const heroVideo = document.getElementById('heroVideo');
             if (heroVideo) {
-                // Event listener for video errors (e.g., file not found, network error, unsupported format)
                 heroVideo.addEventListener('error', function(e) {
                     console.error("Hero video error:", e);
-                    // Hide video element, fallback image (CSS positioned) should become visible.
                     heroVideo.style.display = 'none'; 
                 });
-
-                // Event listener for when video data is loaded enough to determine dimensions
-                heroVideo.addEventListener('loadedmetadata', function() {
-                    // console.log("Video metadata loaded. Dimensions:", this.videoWidth, "x", this.videoHeight);
-                    // At this point, the video element itself is ready, but playback might still be an issue.
-                });
                 
-                // Event listener for when the video can play through without stopping for buffering
-                heroVideo.addEventListener('canplaythrough', function() {
-                    // console.log("Video can play through.");
-                    // Attempt to play if not already playing (some browsers might need this nudge)
-                    // The `autoplay` attribute should handle this, but this is an extra measure.
-                    if (heroVideo.paused) {
-                        heroVideo.play().then(() => {
-                            // console.log("Video playback started via canplaythrough event.");
-                        }).catch(error => {
-                            console.warn("Video autoplay via canplaythrough was prevented:", error);
-                            heroVideo.style.display = 'none'; // Hide if play is prevented
-                        });
-                    }
-                });
-
-
-                // Attempt to play the video. Muted autoplay is generally allowed.
-                // The `autoplay` attribute on the video tag handles the initial attempt.
-                // This JavaScript `play()` call is a secondary measure and helps catch errors.
                 const playPromise = heroVideo.play();
-
                 if (playPromise !== undefined) {
-                    playPromise.then(() => {
-                        // Autoplay started successfully or was already playing due to the attribute.
-                        // console.log("Hero video autoplay initiated or confirmed.");
-                    }).catch(error => {
-                        // Autoplay was prevented.
+                    playPromise.catch(error => {
                         console.warn("Hero video autoplay was prevented by the browser:", error);
-                        // Hide video element, fallback image (CSS positioned) should become visible.
                         heroVideo.style.display = 'none'; 
                     });
                 }
