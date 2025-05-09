@@ -54,7 +54,7 @@ app.set('view engine', 'ejs');
 
 // --- Static Files ---
 // Uncomment if you have a 'public' directory for CSS, client-side JS, images
-// app.use(express.static(path.join(__dirname, 'public')));
+ app.use(express.static(path.join(__dirname, 'public')));
 
 // --- Core Middlewares ---
 app.use(bodyParser.urlencoded({ extended: true })); // Parse URL-encoded bodies

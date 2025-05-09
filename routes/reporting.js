@@ -49,7 +49,10 @@ router.get('/', async (req, res) => {
         type: loggedInUser.role, 
         salesSummary: {}, pnlSummary: {}, orderStatusCounts: [], inventorySummary: {},
         deliveryStatusCounts: [], customerCount: 0, 
-        tripSummary: {}, fuelSummary: {}, vehiclePerformance: {}
+        tripSummary: {}, fuelSummary: {}, vehiclePerformance: {},
+        perVehicleFuelStats: [], // <-- NEW
+        perVehicleTripStats: [],  // <-- NEW
+        perDriverTripStats: [] 
     }; 
     let viewTitle = 'Reports';
     console.log(`--- Accessing GET /reporting for role: ${loggedInUser.role} ---`);
@@ -175,7 +178,84 @@ router.get('/', async (req, res) => {
 
                 viewTitle = loggedInUser.role === 'admin' ? 'Platform Reports' : 'Company Reports';
                 break;
+                reportData.perVehicleFuelStats = await FuelLog.aggregate([
+                    { $match: { ...matchCompanyFuel, ...dateFilterFuel } },
+                    { $group: {
+                        _id: "$vehicleId",
+                        totalLiters: { $sum: "$fuelQuantityLiters" },
+                        totalCost: { $sum: "$fuelCostTotalINR" },
+                        logCount: { $sum: 1 }
+                    }},
+                    { $lookup: { from: Vehicle.collection.name, localField: "_id", foreignField: "_id", as: "vehicleDetails" }},
+                    { $unwind: { path: "$vehicleDetails", preserveNullAndEmptyArrays: true } }, // Keep if vehicle deleted but logs exist
+                    { $project: {
+                        _id: 0, vehicleId: "$_id",
+                        vehicleNumber: { $ifNull: [ "$vehicleDetails.vehicleNumber", "Unknown Vehicle" ] },
+                        modelName: { $ifNull: [ "$vehicleDetails.modelName", "" ] },
+                        totalLiters: { $round: ["$totalLiters", 2] },
+                        totalCost: { $round: ["$totalCost", 2] },
+                        logCount: "$logCount",
+                        avgCostPerLiter: { 
+                            $cond: { if: { $gt: ["$totalLiters", 0] }, then: { $round: [{ $divide: ["$totalCost", "$totalLiters"] }, 2] }, else: 0 }
+                        }
+                    }},
+                    { $sort: { vehicleNumber: 1 } }
+                ]);
+                console.log("Per-Vehicle Fuel Stats Count:", reportData.perVehicleFuelStats.length);
 
+                // --- NEW: Per-Vehicle Trip Stats ---
+                reportData.perVehicleTripStats = await TripLog.aggregate([
+                    { $match: { ...matchCompanyTrips, status: 'completed', startOdometer: { $ne: null }, endOdometer: { $ne: null }, ...dateFilterTrips } },
+                    { $project: { vehicleId: 1, distance: { $subtract: ["$endOdometer", "$startOdometer"] } }},
+                    { $match: { distance: { $gte: 0 } } },
+                    { $group: {
+                        _id: "$vehicleId",
+                        totalTrips: { $sum: 1 },
+                        totalDistanceKm: { $sum: "$distance" }
+                    }},
+                    { $lookup: { from: Vehicle.collection.name, localField: "_id", foreignField: "_id", as: "vehicleDetails" }},
+                    { $unwind: { path: "$vehicleDetails", preserveNullAndEmptyArrays: true } },
+                    { $project: {
+                        _id: 0, vehicleId: "$_id",
+                        vehicleNumber: { $ifNull: [ "$vehicleDetails.vehicleNumber", "Unknown Vehicle" ] },
+                        modelName: { $ifNull: [ "$vehicleDetails.modelName", "" ] },
+                        totalTrips: "$totalTrips",
+                        totalDistanceKm: { $round: ["$totalDistanceKm", 1] },
+                        avgDistancePerTrip: {
+                             $cond: { if: { $gt: ["$totalTrips", 0] }, then: { $round: [{ $divide: ["$totalDistanceKm", "$totalTrips"] }, 1] }, else: 0 }
+                        }
+                    }},
+                    { $sort: { vehicleNumber: 1 } }
+                ]);
+                console.log("Per-Vehicle Trip Stats Count:", reportData.perVehicleTripStats.length);
+
+                // --- NEW: Per-Driver Trip Stats ---
+                reportData.perDriverTripStats = await TripLog.aggregate([
+                    { $match: { ...matchCompanyTrips, status: 'completed', startOdometer: { $ne: null }, endOdometer: { $ne: null }, ...dateFilterTrips } },
+                    { $project: { driverId: 1, distance: { $subtract: ["$endOdometer", "$startOdometer"] } }},
+                    { $match: { distance: { $gte: 0 } } },
+                    { $group: {
+                        _id: "$driverId",
+                        totalTrips: { $sum: 1 },
+                        totalDistanceKm: { $sum: "$distance" }
+                    }},
+                    { $lookup: { from: User.collection.name, localField: "_id", foreignField: "_id", as: "driverDetails" }},
+                    { $unwind: { path: "$driverDetails", preserveNullAndEmptyArrays: true } }, // Keep if driver deleted
+                    { $project: {
+                        _id: 0, driverId: "$_id",
+                        driverName: { $ifNull: [ "$driverDetails.username", "Unknown Driver" ] },
+                        totalTrips: "$totalTrips",
+                        totalDistanceKm: { $round: ["$totalDistanceKm", 1] },
+                        avgDistancePerTrip: {
+                             $cond: { if: { $gt: ["$totalTrips", 0] }, then: { $round: [{ $divide: ["$totalDistanceKm", "$totalTrips"] }, 1] }, else: 0 }
+                        }
+                    }},
+                    { $sort: { driverName: 1 } }
+                ]);
+                console.log("Per-Driver Trip Stats Count:", reportData.perDriverTripStats.length);
+                
+                viewTitle = loggedInUser.role === 'admin' ? 'Platform Reports' : 'Company Reports';
+                break;
             case 'store_owner':
             case 'employee':
                 // Add date filters to store-specific aggregations
@@ -303,6 +383,169 @@ router.get('/sales-summary/csv', async (req, res) => {
     } catch (err) {
         console.error("Error generating Sales Summary CSV:", err);
         res.status(500).send(`Could not generate CSV: ${err.message}`);
+    }
+});
+
+
+// --- NEW: GET /reporting/trips - List Trip Logs ---
+router.get('/trips', async (req, res) => {
+    const loggedInUser = res.locals.loggedInUser;
+    const page = parseInt(req.query.page) || 1;
+    const limit = 20; // Trips per page
+    const skip = (page - 1) * limit;
+    let errorMsg = null;
+
+    // Authorization: Only Admin or Warehouse Owner for now
+    if (!['admin', 'warehouse_owner'].includes(loggedInUser.role)) {
+        return res.status(403).render('error_page', { title: "Access Denied", message: "You do not have permission to view trip logs.", layout: './layouts/dashboard_layout' });
+    }
+
+    try {
+        const companyId = loggedInUser.companyId?._id || loggedInUser.companyId;
+
+        // --- Date Filters ---
+        let startDate = parseDateFilter(req.query.startDate);
+        let endDate = parseDateFilter(req.query.endDate, true);
+        
+        // Build query
+        let query = {};
+        if (loggedInUser.role === 'warehouse_owner') {
+            if (!companyId) throw new Error("User not associated with a company.");
+            query.companyId = companyId;
+        }
+        // Apply date filters if both are valid
+        if (startDate && endDate && startDate <= endDate) {
+            query.tripStartDate = { $gte: startDate, $lte: endDate };
+        }
+
+        const [tripLogs, totalTrips] = await Promise.all([
+            TripLog.find(query)
+                .populate('driverId', 'username') // Populate driver's username
+                .populate('vehicleId', 'vehicleNumber modelName') // Populate vehicle details
+                .sort({ tripStartDate: -1 }) // Newest trips first
+                .skip(skip)
+                .limit(limit)
+                .lean(),
+            TripLog.countDocuments(query)
+        ]);
+
+        tripLogs.forEach(trip => {
+            if (trip.startOdometer != null && trip.endOdometer != null) {
+                trip.distanceKm = trip.endOdometer - trip.startOdometer;
+            } else {
+                trip.distanceKm = 'N/A';
+            }
+        });
+        
+        const totalPages = Math.ceil(totalTrips / limit);
+
+        // Format dates for input fields to retain values
+        const currentFilters = {
+            startDate: startDate ? startDate.toISOString().split('T')[0] : '',
+            endDate: endDate ? endDate.toISOString().split('T')[0] : ''
+        };
+
+        res.render('reporting/trip_log', {
+            title: 'Trip Logs',
+            tripLogs,
+            totalPages,
+            currentPage: page,
+            limit,
+            totalTrips,
+            currentFilters, // Pass current filters back to the view
+            error_msg: req.query.error || errorMsg, // From redirects or internal
+            success_msg: req.query.success,
+            layout: './layouts/dashboard_layout'
+        });
+
+    } catch (err) {
+        console.error("Error fetching trip logs:", err);
+        res.status(500).render('error_page', { 
+            title: "Error", 
+            message: `Failed to load trip logs: ${err.message}`, 
+            layout: './layouts/dashboard_layout' 
+        });
+    }
+});
+
+// --- NEW: GET /reporting/fuel-logs - List Fuel Log Entries ---
+router.get('/fuel-logs', async (req, res) => {
+    const loggedInUser = res.locals.loggedInUser;
+    const page = parseInt(req.query.page) || 1;
+    const limit = 20; // Fuel logs per page
+    const skip = (page - 1) * limit;
+    let errorMsg = null;
+
+    // Authorization: Only Admin or Warehouse Owner for now
+    if (!['admin', 'warehouse_owner'].includes(loggedInUser.role)) {
+        return res.status(403).render('error_page', { title: "Access Denied", message: "You do not have permission to view fuel logs.", layout: './layouts/dashboard_layout' });
+    }
+
+    try {
+        const companyId = loggedInUser.companyId?._id || loggedInUser.companyId;
+
+        // --- Date Filters ---
+        let startDate = parseDateFilter(req.query.startDate);
+        let endDate = parseDateFilter(req.query.endDate, true); 
+        
+        // Build query
+        let query = {};
+        if (loggedInUser.role === 'warehouse_owner') {
+            if (!companyId) throw new Error("User not associated with a company.");
+            query.companyId = companyId;
+        }
+        // Apply date filters if both are valid
+        if (startDate && endDate && startDate <= endDate) {
+            query.logDate = { $gte: startDate, $lte: endDate }; // Filter by logDate
+        }
+
+        const [fuelLogs, totalLogs] = await Promise.all([
+            FuelLog.find(query)
+                .populate('driverId', 'username') 
+                .populate('vehicleId', 'vehicleNumber modelName type') 
+                .sort({ logDate: -1 }) // Newest logs first
+                .skip(skip)
+                .limit(limit)
+                .lean(),
+            FuelLog.countDocuments(query)
+        ]);
+
+        // Calculate cost per liter for each log (if not already stored)
+        fuelLogs.forEach(log => {
+            if (log.fuelQuantityLiters > 0 && log.fuelCostTotalINR >= 0) {
+                log.costPerLiter = (log.fuelCostTotalINR / log.fuelQuantityLiters).toFixed(2);
+            } else {
+                log.costPerLiter = 'N/A';
+            }
+        });
+        
+        const totalPages = Math.ceil(totalLogs / limit);
+
+        const currentFilters = {
+            startDate: startDate ? startDate.toISOString().split('T')[0] : '',
+            endDate: endDate ? endDate.toISOString().split('T')[0] : ''
+        };
+
+        res.render('reporting/fuel_log', { // New EJS view
+            title: 'Fuel Logs',
+            fuelLogs,
+            totalPages,
+            currentPage: page,
+            limit,
+            totalLogs,
+            currentFilters,
+            error_msg: req.query.error || errorMsg,
+            success_msg: req.query.success,
+            layout: './layouts/dashboard_layout'
+        });
+
+    } catch (err) {
+        console.error("Error fetching fuel logs:", err);
+        res.status(500).render('error_page', { 
+            title: "Error", 
+            message: `Failed to load fuel logs: ${err.message}`, 
+            layout: './layouts/dashboard_layout' 
+        });
     }
 });
 

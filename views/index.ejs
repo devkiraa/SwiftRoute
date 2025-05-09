@@ -108,9 +108,8 @@
 
     <section class="hero-section-video-bg">
         <div class="hero-video-container">
-            <video autoplay loop muted playsinline poster="https://images.unsplash.com/photo-1604782286058-5f0109b54f7a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=MnwyODE1MDl8MHwxfGFsbHx8fHx8fHx8fDE2MjYxOTI0Mzk&ixlib=rb-1.2.1&q=80&w=1080" id="heroVideo">
-                <source src="YOUR_LOCAL_VIDEO.mp4" type="video/mp4">
-                <source src="YOUR_LOCAL_VIDEO.webm" type="video/webm">
+            <video autoplay loop muted playsinline poster="https://cdn.pixabay.com/video/2017/03/12/8357-208052048_large.mp4" id="heroVideo">
+                <source src="public/6595364-uhd_2560_1440_24fps.mp4" type="video/mp4">
                 Your browser does not support the video tag.
             </video>
             <img src="https://images.unsplash.com/photo-1604782286058-5f0109b54f7a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=MnwyODE1MDl8MHwxfGFsbHx8fHx8fHx8fDE2MjYxOTI0Mzk&ixlib=rb-1.2.1&q=80&w=1080" 
@@ -495,6 +494,15 @@
                     heroVideo.style.display = 'none';
                     // The fallback image is already styled to be a background if the video fails
                     // No explicit action needed for the image here if its CSS is correct
+                });
+
+                // Attempt to play the video. Some browsers require interaction for autoplay,
+                // but muted autoplay is generally allowed.
+                // This can help if the 'autoplay' attribute isn't always respected.
+                heroVideo.play().catch(error => {
+                    console.warn("Video autoplay was prevented:", error);
+                    // Video could not be played automatically, fallback image will be shown.
+                    heroVideo.style.display = 'none';
                 });
             }
         });
