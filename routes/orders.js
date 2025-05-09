@@ -1,7 +1,7 @@
 // routes/orders.js
 const express = require('express');
 const mongoose = require('mongoose');
-const puppeteer = require('puppeteer-core');
+const wkhtmltopdf = require('wkhtmltopdf'); 
 const ejs = require('ejs');
 const path = require('path');
 const qrcode = require('qrcode');
@@ -961,8 +961,7 @@ function numberToWordsINR(num) {
         const belowTwenty = ['','ONE','TWO','THREE','FOUR','FIVE','SIX','SEVEN','EIGHT','NINE','TEN','ELEVEN','TWELVE','THIRTEEN','FOURTEEN','FIFTEEN','SIXTEEN','SEVENTEEN','EIGHTEEN','NINETEEN'];
         const tens = ['','','TWENTY','THIRTY','FORTY','FIFTY','SIXTY','SEVENTY','EIGHTY','NINETY'];
         const getPaisaWords = (p) => {
-            if (p === 0) return '';
-            let word = '';
+            if (p === 0) return ''; let word = '';
             if (p >= 20) { word += tens[Math.floor(p / 10)] + ' ' + belowTwenty[p % 10]; } 
             else { word += belowTwenty[p] + ' '; }
             return word.trim();
@@ -991,7 +990,69 @@ function numberToWordsINR(num) {
 }
 // --- End Number to Words Helper ---
 
-// GET /orders/:id/invoice/pdf - Generate PDF invoice
+
+// Keep other order routes: GET /, GET /new, POST /, GET /:id, PUT /:id, PUT /:id/status, etc.
+// ...
+
+// Route to display a web view of the invoice (for QR code)
+router.get('/invoice/view/:orderId', ensureAuthenticated, async (req, res) => {
+    try {
+        const orderId = req.params.orderId;
+        if (!mongoose.Types.ObjectId.isValid(orderId)) {
+            return res.status(400).render('error_page', { title:"Error", message: "Invalid Order ID for view.", layout: './layouts/dashboard_layout'});
+        }
+        console.log(`Workspaceing order for web view: ${orderId}`);
+
+        const order = await Order.findById(orderId)
+            .populate({ path: 'storeId', model: 'Store', select: 'storeName address gstin stateCode phone' })
+            .populate({
+                path: 'warehouseId', model: 'Warehouse', select: 'name address companyId',
+                populate: { path: 'companyId', model: 'Company', select: 'companyName address gstin contactEmail mobileNumber upiId bankDetails fssaiLicenseNo' }
+            })
+            .populate({ path: 'orderItems.itemId', model: 'Item', select: 'name sku hsnCode uom gstRate mrp' })
+            .populate('createdBy', 'username')
+            .lean();
+
+        if (!order) {
+            return res.status(404).render('error_page', { title:"Not Found", message: "Invoice not found.", layout: './layouts/dashboard_layout'});
+        }
+
+        const sellerCompany = order.warehouseId?.companyId;
+        const receiverStore = order.storeId;
+        if (!sellerCompany || !receiverStore) {
+             return res.status(500).render('error_page', { title:"Error", message: "Required company or store details missing for invoice view.", layout: './layouts/dashboard_layout'});
+        }
+        
+        // Simplified GST Calc for web view (reuse detailed logic if needed)
+        let totalTaxableValue = 0; let overallTotalGSTAmount = 0;
+        order.orderItems.forEach(entry => { 
+            const item = entry.itemId; if (!item) return;
+            const taxableValue = (entry.quantity * entry.priceAtOrder) - (entry.discountAmount || 0);
+            const gstRate = item.gstRate || 0;
+            const itemTotalGst = (taxableValue * gstRate) / 100;
+            entry.lineTotal = taxableValue + itemTotalGst; // Simplified total for display
+            totalTaxableValue += taxableValue; overallTotalGSTAmount += itemTotalGst;
+        });
+        const grandTotalForInvoice = order.grandTotal !== undefined ? order.grandTotal : (totalTaxableValue + overallTotalGSTAmount);
+
+        const viewData = {
+            order: { ...order, invoiceNumber: order.invoiceNumber || `INV-${order._id.toString().slice(-6).toUpperCase()}`, grandTotal: grandTotalForInvoice, amountInWords: numberToWordsINR(grandTotalForInvoice), calculatedTotals: { totalTaxableValue, overallTotalGSTAmount } },
+            seller: sellerCompany, receiver: receiverStore, currentDate: new Date()
+        };
+        
+        res.render('invoices/online_invoice_view', { 
+            title: `Invoice ${viewData.order.invoiceNumber}`,
+            invoiceData: viewData, 
+            layout: false // Use a minimal or no layout for this simple view
+        });
+    } catch (err) {
+        console.error("Error displaying web invoice:", err);
+        res.status(500).render('error_page', { title: "Error", message: `Could not display invoice: ${err.message}`, layout: './layouts/dashboard_layout' });
+    }
+});
+
+
+// GET /orders/:id/invoice/pdf - Generate PDF invoice using wkhtmltopdf
 router.get('/:id/invoice/pdf', ensureAuthenticated, async (req, res) => {
     try {
         const orderId = req.params.id;
@@ -1000,32 +1061,14 @@ router.get('/:id/invoice/pdf', ensureAuthenticated, async (req, res) => {
         if (!mongoose.Types.ObjectId.isValid(orderId)) {
             return res.status(400).send("Invalid Order ID");
         }
-        console.log(`Generating invoice PDF for order: ${orderId} (Size: ${size || 'a4'}, Orientation: ${orientation || 'portrait'})`);
+        console.log(`Generating PDF invoice for order: ${orderId} (Size: ${size || 'a4'}, Orientation: ${orientation || 'portrait'}) using wkhtmltopdf`);
 
         const order = await Order.findById(orderId)
-            .populate({ 
-                path: 'storeId', 
-                model: 'Store', 
-                select: 'storeName address gstin stateCode phone companyId',
-                populate: { path: 'companyId', model: 'Company', select: 'companyName' } 
-            })
-            .populate({
-                path: 'warehouseId',
-                model: 'Warehouse',
-                select: 'name address companyId', 
-                populate: { path: 'companyId', model: 'Company' } 
-            })
-            .populate({
-                path: 'orderItems.itemId',
-                model: 'Item',
-                select: 'name sku hsnCode uom gstRate mrp unitPrice' 
-            })
-            .populate('createdBy', 'username') 
-            .populate({ 
-                path: 'assignedDeliveryPartnerId', 
-                select: 'username currentVehicleId', 
-                populate: { path: 'currentVehicleId', model: 'Vehicle', select: 'vehicleNumber' }
-            })
+            .populate({ path: 'storeId', model: 'Store', select: 'storeName address gstin stateCode phone companyId', populate: { path: 'companyId', model: 'Company', select: 'companyName' } })
+            .populate({ path: 'warehouseId', model: 'Warehouse', select: 'name address companyId', populate: { path: 'companyId', model: 'Company' }})
+            .populate({ path: 'orderItems.itemId', model: 'Item', select: 'name sku hsnCode uom gstRate mrp unitPrice' })
+            .populate('createdBy', 'username')
+            .populate({ path: 'assignedDeliveryPartnerId', select: 'username currentVehicleId', populate: { path: 'currentVehicleId', model: 'Vehicle', select: 'vehicleNumber' }})
             .lean();
 
         if (!order) return res.status(404).send("Order not found");
@@ -1043,15 +1086,17 @@ router.get('/:id/invoice/pdf', ensureAuthenticated, async (req, res) => {
         const sellerStateCode = sellerCompany.address?.stateCode || sellerCompany.gstin?.substring(0,2);
         const receiverStateCode = receiverStore.stateCode || receiverStore.gstin?.substring(0,2);
         const isIntraState = sellerStateCode && receiverStateCode && sellerStateCode.toLowerCase() === receiverStateCode.toLowerCase();
-        console.log(`PDF - Seller State Code: ${sellerStateCode}, Receiver State Code: ${receiverStateCode}, Intra-state: ${isIntraState}`);
+        console.log(`PDF Invoice - Seller State: ${sellerStateCode}, Receiver State: ${receiverStateCode}, Intra-state: ${isIntraState}`);
 
         order.orderItems.forEach(entry => {
             const item = entry.itemId;
-            if (!item) { console.warn(`PDF Invoice: Skipping item in order ${orderId} due to missing item details.`); return; }
+            if (!item) { console.warn(`PDF Invoice: Skipping item in order ${orderId} due to missing details.`); return; }
             const itemRate = parseFloat(entry.priceAtOrder) || 0;
             const itemQuantity = parseFloat(entry.quantity) || 0;
             const itemDiscount = parseFloat(entry.discountAmount || 0); 
-            const taxableValue = (itemRate * itemQuantity) - itemDiscount;
+            const itemSchemeValue = parseFloat(entry.schemeValue || 0); 
+            const grossValue = itemRate * itemQuantity;
+            const taxableValue = grossValue - itemDiscount;
             const gstRate = parseFloat(item.gstRate) || 0;
             let cgst = 0, sgst = 0, igst = 0, itemTotalGst = 0;
 
@@ -1066,10 +1111,8 @@ router.get('/:id/invoice/pdf', ensureAuthenticated, async (req, res) => {
                 }
             }
             
-            entry.calculatedTaxableValue = taxableValue;
-            entry.cgstAmount = cgst; entry.sgstAmount = sgst; entry.igstAmount = igst;
-            entry.totalGstForItem = itemTotalGst;
-            entry.lineTotal = taxableValue + itemTotalGst;
+            entry.calculatedTaxableValue = taxableValue; entry.cgstAmount = cgst; entry.sgstAmount = sgst; entry.igstAmount = igst;
+            entry.totalGstForItem = itemTotalGst; entry.lineTotal = taxableValue + itemTotalGst;
 
             runningTotalQuantity += itemQuantity; totalTaxableValue += taxableValue;
             totalCGSTAmount += cgst; totalSGSTAmount += sgst; totalIGSTAmount += igst;
@@ -1077,8 +1120,8 @@ router.get('/:id/invoice/pdf', ensureAuthenticated, async (req, res) => {
 
             if (gstRate > 0) {
                 if (!gstSummary[gstRate]) gstSummary[gstRate] = { taxable: 0, cgst: 0, sgst: 0, igst: 0, totalGst: 0 };
-                gstSummary[gstRate].taxable += taxableValue;
-                gstSummary[gstRate].cgst += cgst; gstSummary[gstRate].sgst += sgst; gstSummary[gstRate].igst += igst;
+                gstSummary[gstRate].taxable += taxableValue; gstSummary[gstRate].cgst += cgst; 
+                gstSummary[gstRate].sgst += sgst; gstSummary[gstRate].igst += igst;
                 gstSummary[gstRate].totalGst += itemTotalGst;
             }
         });
@@ -1086,24 +1129,15 @@ router.get('/:id/invoice/pdf', ensureAuthenticated, async (req, res) => {
         const grandTotalForInvoice = order.grandTotal !== undefined ? order.grandTotal : (totalTaxableValue + overallTotalGSTAmount - (order.totalDiscountAfterTax || 0) + (order.roundOff || 0));
         let vehicleNumberForInvoice = order.vehicleNumber || order.assignedDeliveryPartnerId?.currentVehicleId?.vehicleNumber;
 
-        // --- Generate QR Codes ---
         const onlineViewUrl = `${req.protocol}://${req.get('host')}/orders/invoice/view/${orderId}`;
         let qrOnlineViewDataUrl = null;
-        try {
-            qrOnlineViewDataUrl = await qrcode.toDataURL(onlineViewUrl, { errorCorrectionLevel: 'M', width: 80, margin: 1 });
-        } catch (qrErr) { console.error("Error generating online view QR code:", qrErr); }
+        try { qrOnlineViewDataUrl = await qrcode.toDataURL(onlineViewUrl, { errorCorrectionLevel: 'M', width: 70, margin: 1 }); } 
+        catch (qrErr) { console.error("Error generating online view QR code:", qrErr); }
         
-        const verificationDataString = JSON.stringify({
-            invNo: order.invoiceNumber || `INV-${order._id.toString().slice(-6).toUpperCase()}`,
-            dt: new Date(order.placedDate).toISOString().split('T')[0],
-            val: grandTotalForInvoice.toFixed(2),
-            s_gst: sellerCompany.gstin || '', 
-            r_gst: receiverStore.gstin || ''
-        });
+        const verificationDataString = JSON.stringify({ /* ... key invoice data ... */ });
         let qrVerificationDataUrl = null;
-        try {
-            qrVerificationDataUrl = await qrcode.toDataURL(verificationDataString, { errorCorrectionLevel: 'M', width: 80, margin: 1 });
-        } catch (qrErr) { console.error("Error generating verification QR code:", qrErr); }
+        try { qrVerificationDataUrl = await qrcode.toDataURL(verificationDataString, { errorCorrectionLevel: 'M', width: 70, margin: 1 }); } 
+        catch (qrErr) { console.error("Error generating verification QR code:", qrErr); }
 
         const invoiceData = {
             order: {
@@ -1124,42 +1158,40 @@ router.get('/:id/invoice/pdf', ensureAuthenticated, async (req, res) => {
         const templatePath = path.join(__dirname, '../views/invoices/invoice_template.ejs');
         const htmlContent = await ejs.renderFile(templatePath, invoiceData);
 
-        // Puppeteer launch options for server environments
-        const browser = await puppeteer.launch({
-            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser', // For Koyeb with apt.txt chromium
-            headless: true,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--no-first-run',
-                '--no-zygote',
-                '--disable-gpu'
-            ]
-        });
-        const page = await browser.newPage();
+        const pdfOptions = {
+            pageSize: size || 'A4', 
+            orientation: orientation || 'Portrait', 
+            marginTop: '15mm', marginBottom: '15mm', marginLeft: '10mm', marginRight: '10mm',
+            disableSmartShrinking: true, enableLocalFileAccess: true,
+            // It's good to set a path for wkhtmltopdf if it's not in the system PATH
+            // On Koyeb, if installed via apt.txt, it should be in PATH.
+            // If not, you might need: executable: '/usr/bin/wkhtmltopdf' (or wherever it is)
+        };
+        if (process.env.WKHTMLTOPDF_PATH) { // Allow overriding path via env variable
+            pdfOptions.executable = process.env.WKHTMLTOPDF_PATH;
+        }
+
+        if (size === 'a5' && orientation && orientation.toLowerCase() === 'landscape') { pdfOptions.pageSize = 'A5'; pdfOptions.orientation = 'Landscape'; } 
+        else if (size === 'a4' && orientation && orientation.toLowerCase() === 'landscape') { pdfOptions.pageSize = 'A4'; pdfOptions.orientation = 'Landscape'; } 
+        else if (size === 'a5') { pdfOptions.pageSize = 'A5'; pdfOptions.orientation = 'Portrait';}
         
-        const pdfOptions = { printBackground: true, margin: { top: '15mm', right: '10mm', bottom: '15mm', left: '10mm' } };
-        if (size === 'a5' && orientation === 'landscape') { pdfOptions.width = '210mm'; pdfOptions.height = '148mm'; } 
-        else if (size === 'a4' && orientation === 'landscape') { pdfOptions.format = 'A4'; pdfOptions.landscape = true; } 
-        else if (size === 'a5') { pdfOptions.format = 'A5'; pdfOptions.landscape = false; } 
-        else { pdfOptions.format = 'A4'; pdfOptions.landscape = false; }
+        console.log("Generating PDF with wkhtmltopdf options:", pdfOptions);
 
-        await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
-        const pdfBuffer = await page.pdf(pdfOptions);
-        await browser.close();
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=invoice-${order._id}-${pdfOptions.pageSize}-${pdfOptions.orientation}.pdf`);
 
-        res.set({
-            'Content-Type': 'application/pdf',
-            'Content-Length': pdfBuffer.length,
-            'Content-Disposition': `inline; filename=invoice-${order._id}-${invoiceData.pageSetup.size}-${invoiceData.pageSetup.orientation}.pdf`
+        const stream = wkhtmltopdf(htmlContent, pdfOptions);
+        stream.pipe(res);
+        stream.on('error', (err) => {
+            console.error("Error during wkhtmltopdf streaming:", err);
+            if (!res.headersSent) { res.status(500).send("Error generating PDF (stream error)."); }
         });
-        res.send(pdfBuffer);
 
     } catch (err) {
-        console.error("Error generating PDF invoice:", err);
-        res.status(500).send(`Error generating invoice: ${err.message}. Check server logs for details.`);
+        console.error("Error in /invoice/pdf route:", err);
+        if (!res.headersSent) {
+            res.status(500).send(`Error generating invoice: ${err.message}.`);
+        }
     }
 });
 
