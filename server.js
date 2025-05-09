@@ -59,7 +59,7 @@ app.set('view engine', 'ejs');
 // --- Core Middlewares ---
 app.use(bodyParser.urlencoded({ extended: true })); // Parse URL-encoded bodies
 app.use(bodyParser.json()); // Parse JSON bodies
-
+app.use('/api', require('./routes/api'));
 // --- Session Middleware (Global) ---
 app.use(session({
   secret: sessionSecret, // Use the variable checked above

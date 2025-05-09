@@ -2,233 +2,582 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Invoice - <%= order._id %></title>
+    <title>Invoice - <%= order.invoiceNumber || order._id.toString().slice(-6).toUpperCase() %></title>
     <style>
-        body { font-family: 'Helvetica Neue', 'Helvetica', Helvetica, Arial, sans-serif; font-size: 10px; color: #333; }
-        .invoice-box { max-width: 800px; margin: auto; padding: 20px; border: 1px solid #eee; box-shadow: 0 0 10px rgba(0, 0, 0, .15); }
-        .invoice-box table { width: 100%; line-height: inherit; text-align: left; border-collapse: collapse; }
-        .invoice-box table td { padding: 5px; vertical-align: top; }
-        .invoice-box table tr td:nth-child(n+2) { text-align: right; } /* Align numbers to right */
-        .invoice-box table tr.top table td { padding-bottom: 20px; }
-        .invoice-box table tr.top table td.title { font-size: 30px; line-height: 30px; color: #333; }
-        .invoice-box table tr.information table td { padding-bottom: 20px; }
-        .invoice-box table tr.heading td { background: #eee; border-bottom: 1px solid #ddd; font-weight: bold; text-align: left; } /* Ensure heading text is left aligned */
-         .invoice-box table tr.heading td:nth-child(n+3) { text-align: right; } /* Align quantity, rate, amount to right */
-        .invoice-box table tr.details td { padding-bottom: 10px; }
-        .invoice-box table tr.item td { border-bottom: 1px solid #eee; text-align: left; } /* Ensure item text is left aligned */
-        .invoice-box table tr.item td:nth-child(n+3) { text-align: right; } /* Align quantity, rate, amount to right */
-        .invoice-box table tr.item.last td { border-bottom: none; }
-        .invoice-box table tr.total td:nth-child(2) { border-top: 2px solid #eee; font-weight: bold; }
+        /* Basic Reset and Page Setup */
+        body {
+            font-family: Arial, Helvetica, sans-serif; /* Common font seen in such invoices */
+            font-size: 9pt; /* Base font size for A4, can be adjusted */
+            color: #000;
+            margin: 0;
+            padding: 0;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+
+        .invoice-container {
+            width: 100%;
+            /* For print, page margins are usually handled by the browser/printer settings.
+               If specific margins are needed for content layout within the page: */
+            /* padding: 10mm; */ /* Example: 10mm margin around content */
+            box-sizing: border-box;
+            min-height: 270mm; /* Approximate A4 height, adjust if needed */
+        }
+
+        /* Page size specific adjustments - primarily for on-screen preview.
+           Actual print scaling should handle A4/A5. */
+        @media print {
+            body {
+                font-size: 8pt; /* Slightly smaller for print if needed */
+            }
+            .invoice-container {
+                margin: 0;
+                padding: 0; /* Remove padding for print if printer handles margins */
+                width: 100%; /* Ensure it uses full printable area */
+            }
+            .no-print {
+                display: none;
+            }
+        }
+
+        /* A5 specific styling (approx 148mm x 210mm) */
+        /* This is harder to control perfectly without JS or specific print settings.
+           This is a general guide if you need to adjust for A5 significantly. */
+        /* @media (max-width: 150mm) {
+            body { font-size: 7pt; }
+        } */
+
+
+        /* --- Helper Classes --- */
         .text-center { text-align: center !important; }
         .text-right { text-align: right !important; }
         .text-left { text-align: left !important; }
         .font-bold { font-weight: bold; }
-        .company-header h1 { margin: 0; font-size: 1.8em; }
-        .company-header p { margin: 2px 0; }
-        .address-block { width: 48%; display: inline-block; vertical-align: top; margin-bottom: 15px;}
-        .invoice-details-block { margin-bottom: 20px; }
-        .invoice-details-block div { margin-bottom: 3px;}
-        .item-table th, .item-table td { border: 1px solid #ddd; padding: 6px;}
-        .item-table th { background: #f9f9f9; }
-        .totals-section { margin-top: 20px; }
-        .totals-section table { width: 40%; float: right; }
-        .totals-section table td { text-align: right;}
-        .totals-section table tr td:first-child { text-align: left; }
-        .footer-notes { margin-top: 30px; border-top: 1px solid #eee; padding-top: 10px; font-size: 9px; }
-        .clear { clear: both; }
-        .signatures { margin-top: 40px; }
-        .signatures div { width: 40%; display: inline-block; text-align: center; }
-        .signatures div.receiver { float: left; }
-        .signatures div.sender { float: right; }
+        .font-semibold { font-weight: 600; }
+        .uppercase { text-transform: uppercase; }
+        .italic { font-style: italic; }
+        .mt-1 { margin-top: 0.25rem; } /* 4px */
+        .mt-2 { margin-top: 0.5rem; }  /* 8px */
+        .mb-1 { margin-bottom: 0.25rem; }
+        .mb-2 { margin-bottom: 0.5rem; }
+        .mb-4 { margin-bottom: 1rem; } /* 16px */
+        .p-1 { padding: 0.25rem; }
+        .p-2 { padding: 0.5rem; }
 
-        /* Based on Sample 1 - PRASANTH STORES */
-        .invoice-pras { /* Similar to invoice-box */ }
-        .invoice-pras .header-top { text-align: center; margin-bottom: 10px;}
-        .invoice-pras .header-top .store-name { font-size: 1.5em; font-weight: bold; margin-bottom: 2px;}
-        .invoice-pras .header-top p { margin: 1px 0; font-size: 0.8em; }
-        .invoice-pras .invoice-meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 20px; font-size: 0.8em; margin-bottom: 10px; padding-bottom:10px; border-bottom: 1px dashed #ccc;}
-        .invoice-pras .address-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; font-size: 0.8em; margin-bottom: 10px; padding-bottom:10px; border-bottom: 1px dashed #ccc;}
-        .invoice-pras .address-grid div { padding: 5px; border: 1px solid #f0f0f0; }
-        .invoice-pras .address-grid h5 { font-weight: bold; margin: 0 0 3px 0; padding-bottom: 2px; border-bottom: 1px solid #eee; }
-        .invoice-pras .item-table { font-size: 0.8em; }
-        .invoice-pras .item-table th, .invoice-pras .item-table td { padding: 4px; }
-        .invoice-pras .item-table th:nth-child(1), .invoice-pras .item-table td:nth-child(1) { width: 5%; } /* SR */
-        .invoice-pras .item-table th:nth-child(2), .invoice-pras .item-table td:nth-child(2) { width: 10%; } /* HSN */
-        .invoice-pras .item-table th:nth-child(3), .invoice-pras .item-table td:nth-child(3) { width: 25%; text-align: left; } /* Item Name */
-        .invoice-pras .item-table th:nth-child(n+4), .invoice-pras .item-table td:nth-child(n+4) { text-align: right; } /* Rest numeric */
+        /* --- Invoice Sections --- */
+        .header-section {
+            padding: 10px 20px;
+            border-bottom: 1px solid #000;
+        }
 
-        .invoice-pras .summary-grid { display: grid; grid-template-columns: 1fr auto; gap: 10px; margin-top: 10px; font-size: 0.8em; }
-        .invoice-pras .summary-grid .tax-breakdown { /* styles for tax table */ }
-        .invoice-pras .summary-grid .grand-totals table { width: 100%; }
-        .invoice-pras .summary-grid .grand-totals td { padding: 3px 0; }
-        .invoice-pras .summary-grid .grand-totals td:last-child { text-align: right; font-weight: bold; }
-        .invoice-pras .amount-in-words { font-size: 0.8em; font-style: italic; margin: 5px 0 10px 0; }
-        .invoice-pras .bank-details { font-size: 0.75em; border-top: 1px dashed #ccc; padding-top:10px; margin-top:10px;}
-        .invoice-pras .bank-details p { margin: 1px 0;}
-        .invoice-pras .signature-area { text-align: right; margin-top: 30px; font-size: 0.8em;}
-        .invoice-pras .footer { text-align: center; font-size: 0.7em; margin-top: 20px; border-top: 1px solid #ccc; padding-top:5px;}
+        .header-section .company-details {
+            text-align: center;
+            margin-bottom: 5px;
+        }
+        .header-section .company-name {
+            font-size: 14pt;
+            font-weight: bold;
+            margin-bottom: 2px;
+        }
+        .header-section .company-address,
+        .header-section .company-contact,
+        .header-section .company-legal {
+            font-size: 8pt;
+            margin: 1px 0;
+        }
+        .header-section .invoice-title-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+        .header-section .invoice-main-title {
+            font-size: 12pt;
+            font-weight: bold;
+            text-align: right;
+        }
+         .header-section .invoice-subtitle {
+            font-size: 7pt;
+            text-align: center;
+            margin-top: 5px;
+            font-weight: bold;
+        }
+
+
+        .customer-invoice-details-section {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 20px;
+            font-size: 8pt;
+            border-bottom: 1px solid #000;
+        }
+        .customer-invoice-details-section > div {
+            width: 48%;
+        }
+        .customer-invoice-details-section h5 {
+            font-size: 8.5pt;
+            font-weight: bold;
+            margin: 0 0 3px 0;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 2px;
+        }
+        .customer-invoice-details-section p {
+            margin: 2px 0;
+            line-height: 1.3;
+        }
+        .customer-invoice-details-section .label {
+            font-weight: bold;
+            display: inline-block;
+            min-width: 70px; /* Adjust as needed */
+        }
+
+        .items-section {
+            padding: 5px 10px; /* Reduced padding for items table */
+        }
+        .item-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 7.5pt; /* Smaller font for item table */
+            margin-top: 5px;
+        }
+        .item-table th, .item-table td {
+            border: 1px solid #000;
+            padding: 3px; /* Reduced padding */
+            text-align: left;
+            vertical-align: top;
+        }
+        .item-table thead th {
+            background-color: #f0f0f0;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        /* Column specific styling for item table */
+        .item-table .col-sn { width: 3%; text-align: center; }
+        .item-table .col-mrp { width: 5%; text-align: right; }
+        .item-table .col-item { width: 25%; } /* Adjusted width */
+        .item-table .col-hsn { width: 7%; text-align: center; }
+        .item-table .col-uom { width: 5%; text-align: center; }
+        .item-table .col-qty { width: 5%; text-align: right; }
+        .item-table .col-rate { width: 7%; text-align: right; }
+        .item-table .col-disc { width: 5%; text-align: right; }
+        .item-table .col-scheme { width: 5%; text-align: right; }
+        .item-table .col-taxable { width: 8%; text-align: right; }
+        .item-table .col-gst-perc { width: 5%; text-align: center; }
+        .item-table .col-cgst { width: 6%; text-align: right; }
+        .item-table .col-sgst { width: 6%; text-align: right; }
+        .item-table .col-total { width: 8%; text-align: right; }
+
+        .item-table tfoot td {
+            font-weight: bold;
+        }
+        .item-table tfoot .footer-label {
+            text-align: right;
+            padding-right: 10px;
+        }
+
+
+        .summary-section {
+            padding: 10px 20px;
+            font-size: 8pt;
+            display: flex;
+            justify-content: space-between;
+            border-top: 1px solid #000;
+        }
+        .summary-section .left-summary {
+            width: 65%;
+        }
+        .summary-section .right-summary {
+            width: 33%;
+            text-align: right;
+        }
+        .summary-section .amount-in-words {
+            margin-bottom: 5px;
+        }
+        .summary-section .amount-in-words .label {
+            font-weight: bold;
+        }
+        .summary-section .amount-in-words .value {
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .summary-section .total-line {
+            display: flex;
+            justify-content: space-between;
+            margin: 2px 0;
+        }
+        .summary-section .total-line .label {
+            font-weight: normal;
+        }
+        .summary-section .total-line .value {
+            font-weight: bold;
+        }
+        .summary-section .grand-total-line .label,
+        .summary-section .grand-total-line .value {
+            font-size: 10pt;
+            font-weight: bold;
+        }
+        .summary-section .tax-breakdown {
+            font-size: 7.5pt;
+            width: 100%;
+            margin-top: 5px;
+        }
+        .summary-section .tax-breakdown table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .summary-section .tax-breakdown th,
+        .summary-section .tax-breakdown td {
+            border: 1px solid #000;
+            padding: 2px 4px;
+            text-align: right;
+        }
+        .summary-section .tax-breakdown th {
+            background-color: #f0f0f0;
+            font-weight: bold;
+            text-align: center;
+        }
+
+
+        .footer-section {
+            padding: 10px 20px;
+            font-size: 7.5pt;
+            border-top: 1px solid #000;
+        }
+        .footer-section .bank-details p,
+        .footer-section .terms-declaration p {
+            margin: 2px 0;
+            line-height: 1.3;
+        }
+        .footer-section .bank-details strong,
+        .footer-section .terms-declaration strong {
+            font-weight: bold;
+        }
+        .footer-section .signatures {
+            margin-top: 15px; /* Reduced margin */
+            display: flex;
+            justify-content: space-between;
+            padding-top: 10px; /* Reduced padding */
+        }
+        .footer-section .signature-block {
+            width: 45%;
+            text-align: center;
+        }
+        .footer-section .signature-line {
+            border-bottom: 1px solid #000;
+            height: 30px; /* Space for signature */
+            margin-bottom: 3px;
+        }
+        .footer-section .signature-block.receiver {
+            text-align: left;
+        }
+        .footer-section .signature-block.sender {
+            text-align: right;
+        }
+        .footer-section .signature-block p {
+            margin-top: 2px;
+        }
+        .footer-section .final-footer-text {
+            text-align: center;
+            font-size: 7pt;
+            margin-top: 10px;
+            padding-top: 5px;
+            border-top: 1px dotted #ccc;
+        }
+
+        /* Ensure content fills height for single page invoices */
+        .invoice-wrapper {
+            display: flex;
+            flex-direction: column;
+            min-height: 98vh; /* Try to fill viewport height, adjust for print */
+        }
+        .items-section {
+            flex-grow: 1; /* Allows items section to take available space */
+        }
+
     </style>
 </head>
 <body>
-    <div class="invoice-box invoice-pras"> <header class="header-top">
-            <div class="store-name"><%= seller.companyName || 'SELLER COMPANY NAME' %></div>
-            <p><%= seller.address?.street %>, <%= seller.address?.city %></p>
-            <p><%= seller.address?.state %> - <%= seller.address?.pincode %>, <%= seller.address?.country %></p>
-            <p>Phone: <%= seller.mobileNumber || 'N/A' %></p>
-            <% if (seller.contactEmail) { %><p>E-Mail: <%= seller.contactEmail %></p><% } %>
-            <% if (seller.gstin) { %><p>GSTIN: <%= seller.gstin %></p><% } %>
-            <% if (seller.fssaiLicenseNo) { %><p>FoodLic: <%= seller.fssaiLicenseNo %></p><% } %>
-        </header>
+    <div class="invoice-container">
+        <div class="invoice-wrapper"> <section class="header-section">
+                <div class="company-details">
+                    <div class="company-name"><%= seller.companyName || 'SELLER COMPANY NAME' %></div>
+                    <% if(seller.address) { %>
+                    <div class="company-address">
+                        <%= seller.address.street %><% if(seller.address.street && seller.address.city) { %>, <% } %><%= seller.address.city %>,
+                        <%= seller.address.state %><% if(seller.address.state && seller.address.pincode) { %> - <% } %><%= seller.address.pincode %>, <%= seller.address.country || 'INDIA' %>
+                    </div>
+                    <% } %>
+                    <div class="company-contact">
+                        <% if (seller.mobileNumber) { %>Ph: <%= seller.mobileNumber %><% } %>
+                        <% if (seller.contactEmail) { %> <% if (seller.mobileNumber) { %> | <% } %>E-Mail: <%= seller.contactEmail %><% } %>
+                    </div>
+                    <div class="company-legal">
+                        <% if (seller.gstin) { %>GSTIN: <%= seller.gstin %><% } %>
+                        <% if (seller.fssaiLicenseNo) { %> <% if (seller.gstin) { %> | <% } %>F.Lic: <%= seller.fssaiLicenseNo %><% } %>
+                    </div>
+                </div>
+                <div class="invoice-title-section">
+                    <div> </div>
+                    <div class="invoice-main-title">
+                        <%= order.invoiceType === 'TAX_INVOICE' ? 'TAX INVOICE' : 'Sales Invoice' %>
+                    </div>
+                </div>
+                 <% if (order.invoiceType === 'TAX_INVOICE') { %>
+                    <div class="invoice-subtitle">GOODS AND SERVICES TAX INVOICE RULES - FORM GST INV-1</div>
+                <% } %>
+            </section>
 
-        <div class="invoice-meta-grid">
-            <div><strong>Invoice No:</strong> <%= order.invoiceNumber || order._id.toString().slice(-6).toUpperCase() %></div>
-            <div><strong>Date:</strong> <%= new Date(order.placedDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) %></div>
-            <div><strong>Order No:</strong> <%= order.orderNumber || order._id.toString().slice(-6).toUpperCase() %></div>
-            <% if (order.vehicleNumber) { %><div><strong>Veh No:</strong> <%= order.vehicleNumber %></div><% } %>
-            <div><strong>Bill Type:</strong> <%= order.billType || 'CREDIT' %></div>
-            <% if (order.ackNo) { %><div><strong>Ack No:</strong> <%= order.ackNo %></div><% } %>
-            <% if (order.irn) { %><div><strong>IRN:</strong> <%= order.irn %></div><% } %>
-            <% if (order.salesmanName) { %><div><strong>Salesman Name:</strong> <%= order.salesmanName %></div><% } %>
-        </div>
+            <section class="customer-invoice-details-section">
+                <div class="customer-details"> <h5>CUSTOMER: <%= receiver.storeName || order.customerName || 'RECEIVER NAME' %></h5>
+                    <% if(receiver.address) { %>
+                        <p><%= receiver.address.street %></p>
+                        <p><%= receiver.address.city %>, <%= receiver.address.state %> - <%= receiver.address.pincode %></p>
+                    <% } else if (order.shippingAddress) { %>
+                        <p><%= order.shippingAddress %></p>
+                    <% } %>
+                    <p><span class="label">STATE:</span> <%= receiver.address?.state || 'N/A' %>
+                       <% if (receiver.stateCode) { %>(CODE: <%= receiver.stateCode %>)<% } %></p>
+                    <% if (receiver.gstin) { %><p><span class="label">GSTIN:</span> <%= receiver.gstin %></p><% } %>
+                    <% if (receiver.phone) { %><p><span class="label">PH:</span> <%= receiver.phone %></p><% } %>
+                </div>
+                <div class="invoice-meta"> <p><span class="label">INV NO:</span> <span class="font-bold"><%= order.invoiceNumber %></span></p>
+                    <p><span class="label">INV DATE:</span> <span class="font-bold"><%= new Date(order.placedDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) %></span></p>
+                    <p><span class="label">BILL TYPE:</span> <%= order.billType || 'CREDIT' %></p>
+                    <% if (order.poNumber) { %><p><span class="label">PO Number:</span> <%= order.poNumber %></p><% } %>
+                    <% if (order.salesmanName) { %><p><span class="label">Salesman:</span> <%= order.salesmanName %></p><% } %>
+                    <% if (order.vehicleNumber) { %><p><span class="label">Veh.No:</span> <%= order.vehicleNumber %></p><% } %>
+                    <% if (order.irn) { %><p style="font-size:7pt;"><span class="label">IRN:</span> <%= order.irn %></p><% } %>
+                    <% if (order.ackNo) { %><p><span class="label">Ack No:</span> <%= order.ackNo %></p><% } %>
+                </div>
+            </section>
 
-        <div class="address-grid">
-            <div>
-                <h5>Details of Receiver (Billed To)</h5>
-                <p><strong><%= receiver.name || 'RECEIVER NAME' %></strong></p>
-                <p><%= receiver.address?.street %></p>
-                <p><%= receiver.address?.city %>, <%= receiver.address?.state %> - <%= receiver.address?.pincode %></p>
-                <p>State: <%= receiver.address?.state %> <span style="float:right;">State Code: <%= receiver.stateCode || 'N/A' %></span></p>
-                <% if (receiver.gstin) { %><p>GSTIN: <%= receiver.gstin %></p><% } %>
-                <% if (receiver.mobile) { %><p>Mobile: <%= receiver.mobile %></p><% } %>
-            </div>
-            <div>
-                <h5>Details of Consignee (Shipped To)</h5>
-                <p><strong><%= consignee.name || 'CONSIGNEE NAME' %></strong></p>
-                <p><%= consignee.address?.street %></p>
-                <p><%= consignee.address?.city %>, <%= consignee.address?.state %> - <%= consignee.address?.pincode %></p>
-                <p>State: <%= consignee.address?.state %> <span style="float:right;">State Code: <%= consignee.stateCode || 'N/A' %></span></p>
-                <% if (consignee.gstin) { %><p>GSTIN: <%= consignee.gstin %></p><% } %>
-            </div>
-        </div>
+            <section class="items-section">
+                <table class="item-table">
+                    <thead>
+                        <tr>
+                            <th class="col-sn">SN</th>
+                            <th class="col-mrp">MRP</th>
+                            <th class="col-item">ITEM NAME</th>
+                            <th class="col-hsn">HSN</th>
+                            <th class="col-uom">UOM</th>
+                            <th class="col-qty">QTY</th>
+                            <th class="col-rate">RATE</th>
+                            <th class="col-disc">DISC.</th>
+                            <th class="col-scheme">SCHEME</th>
+                            <th class="col-taxable">TAXABLE</th>
+                            <th class="col-gst-perc">GST%</th>
+                            <th class="col-cgst">CGST</th>
+                            <th class="col-sgst">SGST</th>
+                            <th class="col-total">TOTAL</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% let runningTotalQuantity = 0; %>
+                        <% let runningTotalDiscount = 0; %>
+                        <% let runningTotalScheme = 0; // Assuming scheme might be a value %>
+                        <% let runningTotalTaxableValue = 0; %>
+                        <% let runningTotalCGSTAmount = 0; %>
+                        <% let runningTotalSGSTAmount = 0; %>
+                        <% let runningTotalIGSTAmount = 0; // For IGST if applicable %>
+                        <% let runningGrandTotal = 0; %>
+                        <% let gstSummary = {}; %>
 
-        <table class="item-table">
-            <thead>
-                <tr class="heading">
-                    <td>SR</td>
-                    <td>HSN</td>
-                    <td class="text-left">Item Name</td>
-                    <td>Unit</td>
-                    <td>Qty</td>
-                    <td>Rate</td>
-                    <td>Disc</td>
-                    <td>Taxable</td>
-                    <td>GST%</td>
-                    <td>GST</td>
-                    <td>Total</td>
-                </tr>
-            </thead>
-            <tbody>
-                <% let itemSubTotal = 0; let totalTaxableValue = 0; let totalGSTAmount = 0; let totalQuantity = 0; %>
-                <% order.orderItems.forEach((entry, index) => { %>
-                    <% const item = entry.itemId; %>
-                    <% const taxableValue = (entry.quantity * entry.priceAtOrder); /* Discount logic can be added here */ %>
-                    <% const gstRate = item.gstRate || 0; /* Assuming gstRate is on item */ %>
-                    <% const gstAmount = (taxableValue * gstRate) / 100; %>
-                    <% const lineTotal = taxableValue + gstAmount; %>
-                    <% itemSubTotal += lineTotal; %>
-                    <% totalTaxableValue += taxableValue; %>
-                    <% totalGSTAmount += gstAmount; %>
-                    <% totalQuantity += entry.quantity; %>
-                    <tr class="item">
-                        <td class="text-center"><%= index + 1 %></td>
-                        <td><%= item.hsnCode || '-' %></td>
-                        <td class="text-left"><%= item.name %></td>
-                        <td class="text-center"><%= item.uom?.toUpperCase() || 'PCS' %></td>
-                        <td class="text-right"><%= entry.quantity %></td>
-                        <td class="text-right"><%= entry.priceAtOrder.toFixed(2) %></td>
-                        <td class="text-right">0</td> <td class="text-right"><%= taxableValue.toFixed(2) %></td>
-                        <td class="text-center"><%= gstRate %>%</td>
-                        <td class="text-right"><%= gstAmount.toFixed(2) %></td>
-                        <td class="text-right"><%= lineTotal.toFixed(2) %></td>
-                    </tr>
-                <% }); %>
-                <tr class="heading">
-                    <td colspan="4" class="text-right font-bold">TOTAL</td>
-                    <td class="text-right font-bold"><%= totalQuantity %></td>
-                    <td></td> <td></td> <td class="text-right font-bold"><%= totalTaxableValue.toFixed(2) %></td>
-                    <td></td> <td class="text-right font-bold"><%= totalGSTAmount.toFixed(2) %></td>
-                    <td class="text-right font-bold"><%= itemSubTotal.toFixed(2) %></td>
-                </tr>
-            </tbody>
-        </table>
+                        <% if (order.orderItems && order.orderItems.length > 0) { %>
+                            <% order.orderItems.forEach((entry, index) => { %>
+                                <% const item = entry.itemId; %>
+                                <% if (!item) return; %>
 
-        <div class="summary-grid">
-            <div class="tax-breakdown">
-                <table style="width: 250px; font-size: 0.75em; margin-top: 10px; border: 1px solid #ccc;">
-                     <tr class="heading" style="background: #f0f0f0;">
-                         <td class="text-left">GST %</td>
-                         <td class="text-right">Taxable</td>
-                         <td class="text-right">CGST</td>
-                         <td class="text-right">SGST</td>
-                         <td class="text-right">Total GST</td>
-                     </tr>
-                     <%# This needs actual data grouped by GST rate from the backend %>
-                     <% if (typeof gstSummary !== 'undefined' && gstSummary) { %>
-                        <% Object.entries(gstSummary).forEach(([rate, amounts]) => { %>
-                            <tr>
-                                <td class="text-left">IGST <%= rate %>%</td>
-                                <td class="text-right"><%= amounts.taxable.toFixed(2) %></td>
-                                <td class="text-right"><%= (amounts.gst / 2).toFixed(2) %></td> <td class="text-right"><%= (amounts.gst / 2).toFixed(2) %></td>
-                                <td class="text-right"><%= amounts.gst.toFixed(2) %></td>
-                            </tr>
-                        <% }) %>
-                     <% } else { %>
-                        <tr><td colspan="5" class="text-center">GST summary N/A</td></tr>
-                     <% } %>
+                                <% const itemRate = parseFloat(entry.priceAtOrder) || 0; %>
+                                <% const itemQuantity = parseFloat(entry.quantity) || 0; %>
+                                <% const itemDiscount = parseFloat(entry.discountAmount) || 0; // Per item discount amount %>
+                                <% const itemSchemeValue = parseFloat(entry.schemeValue) || 0; // Example: monetary value of scheme %>
+
+                                <% const grossValue = itemRate * itemQuantity; %>
+                                <% const taxableValue = grossValue - itemDiscount; // Assuming discount is applied before tax %>
+                                
+                                <% const gstRate = parseFloat(item.gstRate) || 0; %>
+                                <% let cgstAmount = 0; let sgstAmount = 0; let igstAmount = 0; %>
+                                
+                                <% // Assuming seller.address.state and receiver.address.state are available to check for IGST %>
+                                <% const isIntraState = seller.address?.state?.toLowerCase() === receiver.address?.state?.toLowerCase(); %>
+
+                                <% if (isIntraState) { %>
+                                    <% cgstAmount = (taxableValue * (gstRate / 2)) / 100; %>
+                                    <% sgstAmount = (taxableValue * (gstRate / 2)) / 100; %>
+                                <% } else { %>
+                                    <% igstAmount = (taxableValue * gstRate) / 100; %>
+                                <% } %>
+                                
+                                <% const totalGstForItem = cgstAmount + sgstAmount + igstAmount; %>
+                                <% const lineTotal = taxableValue + totalGstForItem; %>
+
+                                <% runningTotalQuantity += itemQuantity; %>
+                                <% runningTotalDiscount += itemDiscount; %>
+                                <% runningTotalScheme += itemSchemeValue; %>
+                                <% runningTotalTaxableValue += taxableValue; %>
+                                <% runningTotalCGSTAmount += cgstAmount; %>
+                                <% runningTotalSGSTAmount += sgstAmount; %>
+                                <% runningTotalIGSTAmount += igstAmount; %>
+                                <% runningGrandTotal += lineTotal; %>
+
+                                <%
+                                if (!gstSummary[gstRate]) {
+                                    gstSummary[gstRate] = { taxable: 0, cgst: 0, sgst: 0, igst: 0, totalGst: 0 };
+                                }
+                                gstSummary[gstRate].taxable += taxableValue;
+                                gstSummary[gstRate].cgst += cgstAmount;
+                                gstSummary[gstRate].sgst += sgstAmount;
+                                gstSummary[gstRate].igst += igstAmount;
+                                gstSummary[gstRate].totalGst += totalGstForItem;
+                                %>
+
+                                <tr>
+                                    <td class="col-sn"><%= index + 1 %></td>
+                                    <td class="col-mrp"><%= item.mrp ? item.mrp.toFixed(2) : '-' %></td>
+                                    <td class="col-item"><%= item.name %> <% if (item.sku) { %>(<%= item.sku %>)<% } %></td>
+                                    <td class="col-hsn"><%= item.hsnCode || '-' %></td>
+                                    <td class="col-uom"><%= item.uom?.toUpperCase() || 'PCS' %></td>
+                                    <td class="col-qty num-align"><%= itemQuantity.toFixed(2) %></td>
+                                    <td class="col-rate num-align"><%= itemRate.toFixed(2) %></td>
+                                    <td class="col-disc num-align"><%= itemDiscount.toFixed(2) %></td>
+                                    <td class="col-scheme num-align"><%= itemSchemeValue.toFixed(2) %></td>
+                                    <td class="col-taxable num-align"><%= taxableValue.toFixed(2) %></td>
+                                    <td class="col-gst-perc num-align"><%= gstRate.toFixed(0) %>%</td>
+                                    <td class="col-cgst num-align"><%= cgstAmount.toFixed(2) %></td>
+                                    <td class="col-sgst num-align"><%= sgstAmount.toFixed(2) %></td>
+                                    <%# if (isIgstApplicable) { %> <td class="col-total num-align"><%= lineTotal.toFixed(2) %></td>
+                                </tr>
+                            <% }); %>
+                        <% } else { %>
+                            <tr><td colspan="14" class="text-center italic">No items in this order.</td></tr>
+                        <% } %>
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="5" class="footer-label">TOTALS:</td>
+                            <td class="col-qty text-right"><%= runningTotalQuantity.toFixed(2) %></td>
+                            <td></td> <td class="col-disc text-right"><%= runningTotalDiscount.toFixed(2) %></td>
+                            <td class="col-scheme text-right"><%= runningTotalScheme.toFixed(2) %></td>
+                            <td class="col-taxable text-right"><%= runningTotalTaxableValue.toFixed(2) %></td>
+                            <td></td> <td class="col-cgst text-right"><%= runningTotalCGSTAmount.toFixed(2) %></td>
+                            <td class="col-sgst text-right"><%= runningTotalSGSTAmount.toFixed(2) %></td>
+                            <%# if (isIgstApplicable) { %> <td class="col-total text-right"><%= runningGrandTotal.toFixed(2) %></td>
+                        </tr>
+                    </tfoot>
                 </table>
-            </div>
-            <div class="grand-totals">
-                <table>
-                    <tr><td>Sub Total:</td><td>₹<%= totalTaxableValue.toFixed(2) %></td></tr>
-                    <tr><td>Total GST:</td><td>₹<%= totalGSTAmount.toFixed(2) %></td></tr>
-                    <% if (order.discountAmount) { %><tr><td>Discount:</td><td>₹<%= order.discountAmount.toFixed(2) %></td></tr><% } %>
-                    <% if (order.roundOff) { %><tr><td>Round Off:</td><td>₹<%= order.roundOff.toFixed(2) %></td></tr><% } %>
-                    <tr class="font-bold" style="border-top: 1px solid #333; border-bottom: 1px solid #333; font-size: 1.1em;">
-                        <td>INVOICE TOTAL:</td>
-                        <td>₹<%= order.grandTotal ? order.grandTotal.toFixed(2) : itemSubTotal.toFixed(2) %></td>
-                    </tr>
-                </table>
-            </div>
-        </div>
-        <div class="clear"></div>
+            </section>
 
-        <div class="amount-in-words">
-            Invoice Value (In Words): <%= order.amountInWords || 'RUPEES ... TO BE IMPLEMENTED ... ONLY' %>
-        </div>
+            <section class="summary-section">
+                <div class="left-summary">
+                    <div class="amount-in-words">
+                        <span class="label">TOTAL (in words):</span>
+                        <span class="value"><%= order.amountInWords || 'TO BE IMPLEMENTED' %></span>
+                    </div>
+                    <% if (Object.keys(gstSummary).length > 0) { %>
+                    <div class="tax-breakdown">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>GST%</th>
+                                    <th>Taxable Value</th>
+                                    <th>CGST Amt</th>
+                                    <th>SGST Amt</th>
+                                    <%# if (isIgstApplicable) { %> <th>Total GST</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <% Object.entries(gstSummary).forEach(([rate, amounts]) => { %>
+                                <tr>
+                                    <td class="text-center"><%= rate %>%</td>
+                                    <td><%= amounts.taxable.toFixed(2) %></td>
+                                    <td><%= amounts.cgst.toFixed(2) %></td>
+                                    <td><%= amounts.sgst.toFixed(2) %></td>
+                                    <%# if (isIgstApplicable) { %> <td><%= amounts.totalGst.toFixed(2) %></td>
+                                </tr>
+                                <% }); %>
+                            </tbody>
+                        </table>
+                    </div>
+                    <% } %>
+                    <% if (order.cessAmount && order.cessAmount > 0) { %>
+                        <p class="mt-1"><span class="label">CESS AMOUNT:</span> * <%= order.cessAmount.toFixed(2) %></p>
+                    <% } %>
+                </div>
+                <div class="right-summary">
+                    <div class="total-line">
+                        <span class="label">Taxable Amount:</span>
+                        <span class="value">₹<%= runningTotalTaxableValue.toFixed(2) %></span>
+                    </div>
+                    <div class="total-line">
+                        <span class="label">Total CGST:</span>
+                        <span class="value">₹<%= runningTotalCGSTAmount.toFixed(2) %></span>
+                    </div>
+                    <div class="total-line">
+                        <span class="label">Total SGST:</span>
+                        <span class="value">₹<%= runningTotalSGSTAmount.toFixed(2) %></span>
+                    </div>
+                    <% if (runningTotalIGSTAmount > 0) { %>
+                    <div class="total-line">
+                        <span class="label">Total IGST:</span>
+                        <span class="value">₹<%= runningTotalIGSTAmount.toFixed(2) %></span>
+                    </div>
+                    <% } %>
+                     <% if (typeof order.totalDiscountAfterTax === 'number' && order.totalDiscountAfterTax > 0) { %>
+                    <div class="total-line">
+                        <span class="label">Disc. After Tax:</span>
+                        <span class="value">- ₹<%= order.totalDiscountAfterTax.toFixed(2) %></span>
+                    </div>
+                    <% } %>
+                    <% if (typeof order.roundOff === 'number' && order.roundOff !== 0) { %>
+                    <div class="total-line">
+                        <span class="label">Round Off:</span>
+                        <span class="value">₹<%= order.roundOff.toFixed(2) %></span>
+                    </div>
+                    <% } %>
+                    <div class="total-line grand-total-line mt-1" style="border-top: 1px solid #000; padding-top: 5px;">
+                        <span class="label">GRAND TOTAL:</span>
+                        <span class="value">₹<%= (order.grandTotal !== undefined ? order.grandTotal : runningGrandTotal + (order.roundOff || 0) - (order.totalDiscountAfterTax || 0)).toFixed(2) %></span>
+                    </div>
+                </div>
+            </section>
 
-        <% if (seller.bankDetails && (seller.bankDetails.bankName || seller.bankDetails.upiId)) { %>
-        <div class="bank-details">
-            <p><strong>BANK DETAILS:</strong></p>
-            <% if (seller.bankDetails.bankName) { %><p>Bank Name: <%= seller.bankDetails.bankName %>, Branch: <%= seller.bankDetails.branchName || 'N/A' %></p><% } %>
-            <% if (seller.bankDetails.accountNumber) { %><p>Account No: <%= seller.bankDetails.accountNumber %>, IFSC Code: <%= seller.bankDetails.ifscCode || 'N/A' %></p><% } %>
-            <% if (seller.bankDetails.upiId) { %><p>GPAY: <%= seller.bankDetails.upiId %></p><% } %>
-        </div>
-        <% } %>
+            <section class="footer-section">
+                <% if (seller && (seller.bankDetails?.accountName || seller.upiId) ) { %>
+                <div class="bank-details mb-2">
+                    <p><strong>BANK DETAILS:</strong>
+                    <% if (seller.bankDetails?.bankName && seller.bankDetails?.accountNumber) { %>
+                        Bank: <%= seller.bankDetails.bankName %>, A/c No: <%= seller.bankDetails.accountNumber %>, IFSC: <%= seller.bankDetails.ifscCode || 'N/A' %>, A/c Name: <%= seller.bankDetails.accountName %>
+                    <% } %>
+                    <% if (seller.upiId) { %> | <strong>UPI ID:</strong> <%= seller.upiId %><% } %>
+                    </p>
+                </div>
+                <% } %>
 
-        <div class="footer-notes">
-            <p>Terms & Conditions: 1. Goods once sold will not be taken back or exchanged. 2. Interest @18% p.a. will be charged if the bill is not paid within 30 days. 3. Our responsibility ceases once goods leave our premises. Subject to PATHANAMTHITTA Jurisdiction.</p>
-            <p style="text-align:center; font-weight:bold; margin-top:10px;">THIS IS A COMPUTER GENERATED INVOICE AND DOES NOT REQUIRE SIGNATURE</p>
-        </div>
+                <div class="terms-declaration mb-2">
+                    <% if (order.warrantyText) { %><p class="italic"><%= order.warrantyText %></p><% } else { %>
+                    <p class="italic">WARRANTY: On the strength of the warranty issued to us by our suppliers we hereby certify that the food/foods mentioned in this invoice is/are warranted to be of the nature and quality which it/these purport/purports to be.</p>
+                    <% } %>
+                    <% if (order.declarationText) { %><p><strong>DECLARATION:</strong> <%= order.declarationText %></p><% } else { %>
+                    <p><strong>DECLARATION:</strong> Certified that all particulars shown in the above tax invoice are true and correct in all respect and the amount indicated represents the price actually charged and there is no flow of additional consideration directly or indirectly to the buyer.</p>
+                    <% } %>
+                </div>
 
-        <div class="signatures">
-             <div class="receiver"><br><br>--------------------------<br>Receiver's Signature</div>
-             <div class="sender">For <%= seller.companyName || 'SELLER COMPANY NAME' %><br><br><br>--------------------------<br>Authorised Signatory</div>
-        </div>
-        <div class="clear"></div>
-
-        <div class="footer">
-            Horizon ERP www.horizontechnodisplays.co.in | Print Time: <%= new Date().toLocaleString('en-IN') %>
-        </div>
-    </div>
-</body>
+                <div class="signatures">
+                    <div class="signature-block receiver">
+                        <p class="italic">Received in good condition</p>
+                        <div class="signature-line"></div>
+                        <p>(Party Signature)</p>
+                    </div>
+                    <div class="signature-block sender">
+                        <p>For: <strong><%= seller.companyName || 'YOUR COMPANY NAME' %></strong></p>
+                        <div class="signature-line"></div>
+                        <p>(Authorised Signatory)</p>
+                    </div>
+                </div>
+                <div class="final-footer-text">
+                    This is a computer-generated invoice.
+                    <% if (currentDate) { %> | Print Time: <%= new Date(currentDate).toLocaleString('en-IN', {dateStyle: 'short', timeStyle: 'short'}) %><% } %>
+                </div>
+            </section>
+        </div> </div> </body>
 </html>

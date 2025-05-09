@@ -31,6 +31,7 @@
     "mongoose-sequence": "^6.0.1",
     "olamaps-web-sdk": "^1.1.2",
     "puppeteer": "^24.8.1",
+    "qrcode": "^1.5.4",
     "slugify": "^1.6.6"
   },
   "devDependencies": {

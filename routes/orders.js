@@ -1,17 +1,17 @@
 // routes/orders.js
 const express = require('express');
 const mongoose = require('mongoose');
+const puppeteer = require('puppeteer');
+const ejs = require('ejs');
+const path = require('path');
 
-// --- Import ALL necessary models ---
 const Order = require('../models/Order');
 const Store = require('../models/Store');
 const User = require('../models/User');
 const Item = require('../models/Item');
-const Warehouse = require('../models/Warehouse'); // Ensure this is present
-const Company = require('../models/Company');
-const puppeteer = require('puppeteer'); // <-- ADDED: For PDF generation
-const ejs = require('ejs');             // <-- ADDED: To render EJS to string
-const path = require('path');  
+const Warehouse = require('../models/Warehouse');
+const Company = require('../models/Company'); 
+const Vehicle = require('../models/Vehicle');
 
 // --- End Model Imports ---
 
@@ -273,6 +273,8 @@ router.get('/:id', async (req, res) => {
         const isAssignedDelivery = loggedInUser.role === 'delivery_partner' && order.assignedDeliveryPartnerId?._id?.toString() === loggedInUser._id.toString();
         if (!hasAccess && !isAssignedDelivery) { /* ... access denied handling ... */ }
 
+        const canEditOrder = hasAccess && order && ['pending', 'confirmed'].includes(order.orderStatus);
+
         // Determine allowed actions
         console.log("Determining allowed actions...");
         let allowedActions = { canUpdateStatus: false, canAssignDelivery: false };
@@ -307,6 +309,7 @@ router.get('/:id', async (req, res) => {
             allowedActions: allowedActions,
             availableDrivers: availableDrivers,
             hasAccess: hasAccess, // Ensure this is passed for Edit button logic
+            canEditOrder: canEditOrder,
             layout: './layouts/dashboard_layout'
         });
         console.log("Finished rendering orders/details view.");
@@ -945,137 +948,318 @@ router.put('/:id/status', ensureCanManageOrder, async (req, res) => {
     }
 });
 
-// Helper to convert number to words (Indian numbering system) - Basic version
+// Helper function for number to words (Replace with a robust library for production)
 function numberToWordsINR(num) {
-    // This is a placeholder - use a robust library for production
-    if (num === null || num === undefined) return 'N/A';
-    const a = ['','one ','two ','three ','four ', 'five ','six ','seven ','eight ','nine ','ten ','eleven ','twelve ','thirteen ','fourteen ','fifteen ','sixteen ','seventeen ','eighteen ','nineteen '];
-    const b = ['', '', 'twenty','thirty','forty','fifty', 'sixty','seventy','eighty','ninety'];
-    const convert = function (n) {
-        if (n < 20) return a[n];
-        let digit = n%10;
-        if (n < 100) return b[Math.floor(n/100)%10] + (digit!=0 ? ' ' : '') + a[digit]; // Incorrect logic here
-        // Corrected and simplified - needs full library for proper conversion
-        return num.toString(); // Fallback to digits
+    if (num === null || num === undefined || isNaN(parseFloat(num))) return 'NOT AVAILABLE';
+    const numStr = parseFloat(num).toFixed(2);
+    const [integerPartString, decimalPartString] = numStr.split('.');
+    let number = parseInt(integerPartString, 10);
+
+    if (number === 0) return 'RUPEES ZERO ONLY';
+
+    const belowTwenty = ['','ONE','TWO','THREE','FOUR','FIVE','SIX','SEVEN','EIGHT','NINE','TEN','ELEVEN','TWELVE','THIRTEEN','FOURTEEN','FIFTEEN','SIXTEEN','SEVENTEEN','EIGHTEEN','NINETEEN'];
+    const tens = ['','','TWENTY','THIRTY','FORTY','FIFTY','SIXTY','SEVENTY','EIGHTY','NINETY'];
+    const getWords = (n) => {
+        if (n === 0) return '';
+        if (n < 20) return belowTwenty[n] + ' ';
+        if (n < 100) return tens[Math.floor(n/10)] + ' ' + belowTwenty[n%10];
+        return belowTwenty[Math.floor(n/100)] + ' HUNDRED ' + getWords(n%100);
     };
-    // This is a VERY basic placeholder. Use a proper library for full conversion
-    const numStr = num.toFixed(0); // Get integer part
-    // More complex logic needed for lakhs, crores etc.
-    // For now, let's use a simple placeholder
-    return `RUPEES ${numStr} ONLY`; // Replace with actual word conversion
+
+    let words = '';
+    if (number >= 10000000) { words += getWords(Math.floor(number/10000000)).trim() + ' CRORE '; number %= 10000000; }
+    if (number >= 100000) { words += getWords(Math.floor(number/100000)).trim() + ' LAKH '; number %= 100000; }
+    if (number >= 1000) { words += getWords(Math.floor(number/1000)).trim() + ' THOUSAND '; number %= 1000; }
+    if (number > 0) { words += getWords(number).trim(); }
+    
+    let result = `RUPEES ${words.trim().replace(/\s+/g, ' ')}`;
+    
+    const decimalNum = parseInt(decimalPartString, 10);
+    if (decimalNum > 0) {
+        result += ` AND PAISA ${getWords(decimalNum).trim().replace(/\s+/g, ' ')}`;
+    }
+    return `${result.trim()} ONLY`;
 }
+// --- End Number to Words Helper ---
 
 
 // GET /orders/:id/invoice/pdf - Generate PDF invoice
-router.get('/:id/invoice/pdf', ensureAuthenticated, async (req, res) => { // ensureCanManageOrder could also be applied here
+router.get('/:id/invoice/pdf', ensureAuthenticated, async (req, res) => { 
+    // ensureCanManageOrder could also be applied here for stricter access
     try {
         const orderId = req.params.id;
+        const { size, orientation } = req.query; // For page size and orientation
+
         if (!mongoose.Types.ObjectId.isValid(orderId)) {
             return res.status(400).send("Invalid Order ID");
         }
-        console.log(`Generating invoice for order: ${orderId}`);
+        console.log(`Generating invoice for order: ${orderId} (Size: ${size || 'a4'}, Orientation: ${orientation || 'portrait'})`);
 
-        // Fetch all necessary populated data
         const order = await Order.findById(orderId)
-            .populate({ path: 'storeId', model: 'Store', select: 'storeName address gstin stateCode phone companyId' }) // Get necessary store fields
+            .populate({ 
+                path: 'storeId', 
+                model: 'Store', 
+                select: 'storeName address gstin stateCode phone companyId', // Ensure these fields exist in your Store model
+                populate: { path: 'companyId', model: 'Company', select: 'companyName' } // For receiver's company name if needed
+            })
             .populate({
                 path: 'warehouseId',
                 model: 'Warehouse',
-                select: 'name address companyId', // Get necessary warehouse fields
-                populate: { path: 'companyId', model: 'Company' } // Populate seller company details from warehouse
+                select: 'name address companyId', 
+                populate: { 
+                    path: 'companyId', 
+                    model: 'Company' // This will fetch the full seller company document
+                } 
             })
             .populate({
                 path: 'orderItems.itemId',
                 model: 'Item',
-                select: 'name sku hsnCode uom gstRate' // Get necessary item fields
+                select: 'name sku hsnCode uom gstRate mrp unitPrice' // Ensure these fields exist in your Item model
             })
-            .populate('createdBy', 'username') // For Salesman name if needed
+            .populate('createdBy', 'username') // For Salesman
+            .populate({ // To get vehicle number
+                path: 'assignedDeliveryPartnerId', 
+                select: 'username currentVehicleId', // Select currentVehicleId from User
+                populate: {
+                    path: 'currentVehicleId',
+                    model: 'Vehicle',
+                    select: 'vehicleNumber' // Select vehicleNumber from Vehicle
+                }
+            })
             .lean();
 
         if (!order) {
             return res.status(404).send("Order not found");
         }
 
-        // Seller details from the company associated with the order's warehouse
         const sellerCompany = order.warehouseId?.companyId;
         if (!sellerCompany) {
-            return res.status(500).send("Seller company details not found for this order's warehouse.");
+            return res.status(500).send("Seller company details (via warehouse) not found for this order.");
         }
-
-        // Receiver (Billed to / Shipped to) details from the order's store
+        
         const receiverStore = order.storeId;
         if (!receiverStore) {
-             return res.status(500).send("Receiver (Store) details not found for this order.");
+            return res.status(500).send("Receiver (Store) details not found for this order.");
         }
-        // You might need to populate company details of the receiver store if it's different from seller
-        // For now, assuming receiverStore has all needed fields like gstin, address, etc.
+        const consigneeStore = receiverStore; // Assuming consignee is same as receiver
 
-        // GST Calculation Logic (keep as is from response #65 or refine)
+        // GST Calculation Logic
         let totalTaxableValue = 0;
-        let totalGSTAmount = 0;
-        const gstSummary = {}; // e.g., { "18": { taxable: 1000, gst: 180 }}
+        let totalCGSTAmount = 0;
+        let totalSGSTAmount = 0;
+        let totalIGSTAmount = 0;
+        let overallTotalGSTAmount = 0;
+        let runningTotalQuantity = 0;
+
+        const gstSummary = {}; 
+
+        const sellerStateCode = sellerCompany.address?.stateCode || sellerCompany.gstin?.substring(0,2); // Prefer stateCode from address
+        const receiverStateCode = receiverStore.stateCode || receiverStore.gstin?.substring(0,2);
+        const isIntraState = sellerStateCode && receiverStateCode && sellerStateCode === receiverStateCode;
+        console.log(`Seller State: ${sellerStateCode}, Receiver State: ${receiverStateCode}, Intra-state: ${isIntraState}`);
+
+
         order.orderItems.forEach(entry => {
             const item = entry.itemId;
-            if (!item) { console.warn(`Skipping item in invoice due to missing details: ${entry.itemId}`); return; }
-            const taxableValue = entry.quantity * entry.priceAtOrder;
-            const gstRate = item.gstRate || 0;
-            const gstAmount = (taxableValue * gstRate) / 100;
-            totalTaxableValue += taxableValue;
-            totalGSTAmount += gstAmount;
+            if (!item) { console.warn(`Invoice: Skipping item in order ${orderId} due to missing item details.`); return; }
+            
+            const itemRate = parseFloat(entry.priceAtOrder) || 0;
+            const itemQuantity = parseFloat(entry.quantity) || 0;
+            const itemDiscount = parseFloat(entry.discountAmount || 0); // Assume discountAmount is on orderItem
+            // const itemSchemeValue = parseFloat(entry.schemeValue || 0); // If you have scheme
+
+            const grossValue = itemRate * itemQuantity;
+            const taxableValue = grossValue - itemDiscount;
+
+            const gstRate = parseFloat(item.gstRate) || 0;
+            let cgst = 0, sgst = 0, igst = 0, itemTotalGst = 0;
+
             if (gstRate > 0) {
-                if (!gstSummary[gstRate]) gstSummary[gstRate] = { taxable: 0, gst: 0 };
+                if (isIntraState) {
+                    cgst = (taxableValue * (gstRate / 2)) / 100;
+                    sgst = (taxableValue * (gstRate / 2)) / 100;
+                    itemTotalGst = cgst + sgst;
+                } else { 
+                    igst = (taxableValue * gstRate) / 100;
+                    itemTotalGst = igst;
+                }
+            }
+            
+            entry.calculatedTaxableValue = taxableValue;
+            entry.cgstAmount = cgst;
+            entry.sgstAmount = sgst;
+            entry.igstAmount = igst;
+            entry.totalGstForItem = itemTotalGst;
+            entry.lineTotal = taxableValue + itemTotalGst;
+
+            runningTotalQuantity += itemQuantity;
+            totalTaxableValue += taxableValue;
+            totalCGSTAmount += cgst;
+            totalSGSTAmount += sgst;
+            totalIGSTAmount += igst;
+            overallTotalGSTAmount += itemTotalGst;
+
+            if (gstRate > 0) {
+                if (!gstSummary[gstRate]) gstSummary[gstRate] = { taxable: 0, cgst: 0, sgst: 0, igst: 0, totalGst: 0 };
                 gstSummary[gstRate].taxable += taxableValue;
-                gstSummary[gstRate].gst += gstAmount;
+                gstSummary[gstRate].cgst += cgst;
+                gstSummary[gstRate].sgst += sgst;
+                gstSummary[gstRate].igst += igst;
+                gstSummary[gstRate].totalGst += itemTotalGst;
             }
         });
-        // Use order.totalAmount if it's guaranteed to be the final correct amount including tax
-        // Or use the calculated grandTotal. Ensure consistency.
-        const grandTotalForInvoice = order.totalAmount; // Or: totalTaxableValue + totalGSTAmount;
+        
+        // Use order.grandTotal if it's pre-calculated and trusted
+        const grandTotalForInvoice = order.grandTotal !== undefined ? order.grandTotal : (totalTaxableValue + overallTotalGSTAmount - (order.totalDiscountAfterTax || 0) + (order.roundOff || 0));
+        
+        let vehicleNumberForInvoice = order.vehicleNumber; // Check if already on order
+        if (!vehicleNumberForInvoice && order.assignedDeliveryPartnerId?.currentVehicleId) {
+             // The currentVehicleId on assignedDeliveryPartnerId is already populated by the query
+             vehicleNumberForInvoice = order.assignedDeliveryPartnerId.currentVehicleId?.vehicleNumber;
+        }
 
         const invoiceData = {
             order: {
                 ...order,
-                invoiceNumber: `INV-${order._id.toString().slice(-6).toUpperCase()}`,
+                invoiceNumber: order.invoiceNumber || `INV-${order._id.toString().slice(-6).toUpperCase()}`,
                 salesmanName: order.createdBy?.username,
-                grandTotal: grandTotalForInvoice, // Pass the confirmed grand total
-                amountInWords: numberToWordsINR(grandTotalForInvoice)
+                grandTotal: grandTotalForInvoice,
+                amountInWords: numberToWordsINR(grandTotalForInvoice),
+                vehicleNumber: vehicleNumberForInvoice,
+                billType: order.billType || 'CREDIT', // Default if not set
+                // Fields that might not be on your Order model yet, provide fallbacks
+                poNumber: order.poNumber || '-',
+                ackNo: order.ackNo || '-',
+                irn: order.irn || '-',
+                totalDiscountAfterTax: order.totalDiscountAfterTax || 0,
+                roundOff: order.roundOff || 0,
+                warrantyText: order.warrantyText || "Standard warranty terms apply.",
+                declarationText: order.declarationText || "We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.",
+                calculatedTotals: {
+                    totalQuantity: runningTotalQuantity,
+                    totalTaxableValue, totalCGSTAmount, totalSGSTAmount, totalIGSTAmount, overallTotalGSTAmount,
+                    runningSubTotal: totalTaxableValue + overallTotalGSTAmount 
+                }
             },
-            seller: sellerCompany, // Full populated Company object
-            receiver: receiverStore, // Full populated Store object
-            consignee: receiverStore, // Assuming consignee is same as receiver
+            seller: sellerCompany, 
+            receiver: receiverStore, 
+            consignee: consigneeStore, 
             gstSummary: gstSummary,
-            currentDate: new Date()
+            currentDate: new Date(),
+            pageSetup: { size: size || 'a4', orientation: orientation || 'portrait' },
+            isIntraState: isIntraState 
         };
 
         const templatePath = path.join(__dirname, '../views/invoices/invoice_template.ejs');
-        console.log("Rendering EJS template from:", templatePath);
         const htmlContent = await ejs.renderFile(templatePath, invoiceData);
-        console.log("EJS template rendered to HTML successfully.");
 
-        const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+        const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox', '--font-render-hinting=none'] });
         const page = await browser.newPage();
-        console.log("Puppeteer page created. Setting content...");
-        await page.setContent(htmlContent, { waitUntil: 'networkidle0' }); // Wait for all resources
-        console.log("HTML content set. Generating PDF...");
-        const pdfBuffer = await page.pdf({
-            format: 'A4',
+        
+        const pdfOptions = {
             printBackground: true,
-            margin: { top: '20mm', right: '12mm', bottom: '20mm', left: '12mm' } // Adjusted margins slightly
-        });
+            margin: { top: '15mm', right: '10mm', bottom: '15mm', left: '10mm' } 
+        };
+
+        if (size === 'a5' && orientation === 'landscape') {
+            pdfOptions.width = '210mm'; pdfOptions.height = '148mm';
+        } else if (size === 'a4' && orientation === 'landscape') {
+            pdfOptions.format = 'A4'; pdfOptions.landscape = true;
+        } else if (size === 'a5') { 
+            pdfOptions.format = 'A5'; pdfOptions.landscape = false;
+        } else { 
+            pdfOptions.format = 'A4'; pdfOptions.landscape = false;
+        }
+
+        await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+        const pdfBuffer = await page.pdf(pdfOptions);
         await browser.close();
-        console.log("PDF generated and browser closed.");
 
         res.set({
             'Content-Type': 'application/pdf',
             'Content-Length': pdfBuffer.length,
-            'Content-Disposition': `inline; filename=invoice-${order._id}.pdf` // Use 'inline' to display in browser
+            'Content-Disposition': `inline; filename=invoice-${order._id}-${invoiceData.pageSetup.size}-${invoiceData.pageSetup.orientation}.pdf`
         });
         res.send(pdfBuffer);
 
     } catch (err) {
         console.error("Error generating PDF invoice:", err);
-        res.status(500).send(`Error generating invoice: ${err.message}`);
+        res.status(500).send(`Error generating invoice: ${err.message}. Check server logs for details.`);
     }
 });
 
+// --- NEW: Route to display a web view of the invoice ---
+router.get('/invoice/view/:orderId', ensureAuthenticated, async (req, res) => {
+    try {
+        const orderId = req.params.orderId;
+        if (!mongoose.Types.ObjectId.isValid(orderId)) {
+            return res.status(400).render('error_page', { title:"Error", message: "Invalid Order ID for view.", layout: './layouts/dashboard_layout'});
+        }
+        console.log(`Workspaceing order for web view: ${orderId}`);
+
+        // Fetch order data similar to PDF route, but might not need all company details
+        const order = await Order.findById(orderId)
+            .populate({ path: 'storeId', model: 'Store', select: 'storeName address gstin stateCode phone' })
+            .populate({
+                path: 'warehouseId', model: 'Warehouse', select: 'name address companyId',
+                populate: { path: 'companyId', model: 'Company', select: 'companyName address gstin contactEmail mobileNumber upiId bankDetails fssaiLicenseNo' }
+            })
+            .populate({ path: 'orderItems.itemId', model: 'Item', select: 'name sku hsnCode uom gstRate mrp' })
+            .populate('createdBy', 'username')
+            .lean();
+
+        if (!order) {
+            return res.status(404).render('error_page', { title:"Not Found", message: "Invoice not found.", layout: './layouts/dashboard_layout'});
+        }
+
+        const sellerCompany = order.warehouseId?.companyId;
+        const receiverStore = order.storeId;
+
+        if (!sellerCompany || !receiverStore) {
+             return res.status(500).render('error_page', { title:"Error", message: "Required company or store details missing for invoice view.", layout: './layouts/dashboard_layout'});
+        }
+        
+        // GST Calculation (simplified for example, reuse your PDF logic if more complex)
+        let totalTaxableValue = 0; let overallTotalGSTAmount = 0;
+        order.orderItems.forEach(entry => { /* ... (Simplified or reused GST calculation) ... */ 
+            const item = entry.itemId;
+            if (!item) return;
+            const taxableValue = (entry.quantity * entry.priceAtOrder) - (entry.discountAmount || 0);
+            const gstRate = item.gstRate || 0;
+            const itemTotalGst = (taxableValue * gstRate) / 100;
+            entry.calculatedTaxableValue = taxableValue;
+            entry.totalGstForItem = itemTotalGst;
+            entry.lineTotal = taxableValue + itemTotalGst;
+            totalTaxableValue += taxableValue;
+            overallTotalGSTAmount += itemTotalGst;
+        });
+        const grandTotalForInvoice = order.totalAmount || (totalTaxableValue + overallTotalGSTAmount - (order.totalDiscountAfterTax || 0) + (order.roundOff || 0));
+
+
+        // Data for a simpler EJS template (or reuse invoice_template with flags)
+        const viewData = {
+            order: {
+                ...order,
+                invoiceNumber: order.invoiceNumber || `INV-${order._id.toString().slice(-6).toUpperCase()}`,
+                salesmanName: order.createdBy?.username,
+                grandTotal: grandTotalForInvoice,
+                amountInWords: numberToWordsINR(grandTotalForInvoice)
+            },
+            seller: sellerCompany,
+            receiver: receiverStore,
+            currentDate: new Date()
+        };
+        
+        // Render a specific view, or potentially a simplified version of invoice_template
+        res.render('invoices/online_invoice_view', { 
+            title: `Invoice ${viewData.order.invoiceNumber}`,
+            invoiceData: viewData, 
+            layout: false // Or a very minimal layout
+        });
+
+    } catch (err) {
+        console.error("Error displaying web invoice:", err);
+        res.status(500).render('error_page', { title: "Error", message: `Could not display invoice: ${err.message}`, layout: './layouts/dashboard_layout' });
+    }
+});
 module.exports = router;
