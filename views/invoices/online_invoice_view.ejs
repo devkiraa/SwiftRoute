@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice <%= invoiceData.order.invoiceNumber %></title>
+    <style>
+        body { font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; margin: 20px; color: #333; }
+        .container { max-width: 800px; margin: auto; padding: 20px; border: 1px solid #ddd; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1, h2, h3 { margin-top: 0; }
+        .header { text-align: center; margin-bottom: 20px; }
+        .header .company-name { font-size: 2em; font-weight: bold; }
+        .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px dashed #ccc; }
+        .details-grid div h5 { font-size: 1.1em; margin-bottom: 5px; border-bottom: 1px solid #eee; padding-bottom: 3px;}
+        .item-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        .item-table th, .item-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        .item-table th { background-color: #f9f9f9; }
+        .item-table .text-right { text-align: right; }
+        .totals { margin-top: 20px; text-align: right; }
+        .totals p { margin: 5px 0; }
+        .totals .grand-total { font-size: 1.2em; font-weight: bold; }
+        .print-button { display: block; width: fit-content; margin: 20px auto; padding: 10px 20px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px; }
+        @media print { .print-button { display: none; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="company-name"><%= invoiceData.seller.companyName %></div>
+            <p><%= invoiceData.seller.address?.street %>, <%= invoiceData.seller.address?.city %>, <%= invoiceData.seller.address?.state %></p>
+            <% if (invoiceData.seller.gstin) { %><p>GSTIN: <%= invoiceData.seller.gstin %></p><% } %>
+        </header>
+
+        <h2>Invoice: <%= invoiceData.order.invoiceNumber %></h2>
+        <p>Date: <%= new Date(invoiceData.order.placedDate).toLocaleDateString('en-IN') %></p>
+
+        <div class="details-grid">
+            <div>
+                <h5>Billed To (Receiver):</h5>
+                <p><strong><%= invoiceData.receiver.storeName || invoiceData.order.customerName %></strong></p>
+                <p><%= invoiceData.receiver.address?.street %></p>
+                <p><%= invoiceData.receiver.address?.city %>, <%= invoiceData.receiver.address?.state %></p>
+                <% if (invoiceData.receiver.gstin) { %><p>GSTIN: <%= invoiceData.receiver.gstin %></p><% } %>
+            </div>
+            <div>
+                <h5>Shipped To (Consignee):</h5>
+                <p><strong><%= invoiceData.receiver.storeName || invoiceData.order.customerName %></strong></p> <%# Assuming same %>
+                <p><%= invoiceData.receiver.address?.street %></p>
+                <p><%= invoiceData.receiver.address?.city %>, <%= invoiceData.receiver.address?.state %></p>
+            </div>
+        </div>
+
+        <table class="item-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Item Name (SKU)</th>
+                    <th class="text-right">Qty</th>
+                    <th class="text-right">Rate (₹)</th>
+                    <th class="text-right">Amount (₹)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% invoiceData.order.orderItems.forEach((entry, index) => { %>
+                    <tr>
+                        <td><%= index + 1 %></td>
+                        <td><%= entry.itemId?.name %> (<%= entry.itemId?.sku %>)</td>
+                        <td class="text-right"><%= entry.quantity %></td>
+                        <td class="text-right"><%= entry.priceAtOrder.toFixed(2) %></td>
+                        <td class="text-right"><%= entry.lineTotal.toFixed(2) %></td>
+                    </tr>
+                <% }); %>
+            </tbody>
+        </table>
+
+        <div class="totals">
+            <p>Subtotal: ₹<%= invoiceData.order.calculatedTotals?.totalTaxableValue?.toFixed(2) %></p>
+            <p>Total GST: ₹<%= invoiceData.order.calculatedTotals?.overallTotalGSTAmount?.toFixed(2) %></p>
+            <% if (invoiceData.order.totalDiscountAfterTax) { %><p>Discount: - ₹<%= invoiceData.order.totalDiscountAfterTax.toFixed(2) %></p><% } %>
+            <% if (invoiceData.order.roundOff) { %><p>Round Off: ₹<%= invoiceData.order.roundOff.toFixed(2) %></p><% } %>
+            <p class="grand-total">Grand Total: ₹<%= invoiceData.order.grandTotal.toFixed(2) %></p>
+        </div>
+        <a href="javascript:window.print()" class="print-button">Print Invoice</a>
+    </div>
+</body>
+</html>

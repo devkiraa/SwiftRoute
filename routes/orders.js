@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const puppeteer = require('puppeteer');
 const ejs = require('ejs');
 const path = require('path');
+const qrcode = require('qrcode');
 
 const Order = require('../models/Order');
 const Store = require('../models/Store');
@@ -955,15 +956,36 @@ function numberToWordsINR(num) {
     const [integerPartString, decimalPartString] = numStr.split('.');
     let number = parseInt(integerPartString, 10);
 
-    if (number === 0) return 'RUPEES ZERO ONLY';
+    if (number === 0 && parseInt(decimalPartString, 10) === 0) return 'RUPEES ZERO ONLY';
+    if (number === 0 && parseInt(decimalPartString, 10) > 0) {
+        // Handle only paisa
+        const getPaisaWords = (p) => {
+            if (p === 0) return '';
+            if (p < 20) return ['','ONE','TWO','THREE','FOUR','FIVE','SIX','SEVEN','EIGHT','NINE','TEN','ELEVEN','TWELVE','THIRTEEN','FOURTEEN','FIFTEEN','SIXTEEN','SEVENTEEN','EIGHTEEN','NINETEEN'][p] + ' ';
+            return ['', '', 'TWENTY','THIRTY','FORTY','FIFTY', 'SIXTY','SEVENTY','EIGHTY','NINETY'][Math.floor(p/10)] + ' ' + ['','ONE','TWO','THREE','FOUR','FIVE','SIX','SEVEN','EIGHT','NINE'][p%10];
+        };
+        return `RUPEES ZERO AND PAISA ${getPaisaWords(parseInt(decimalPartString, 10)).trim().replace(/\s+/g, ' ')} ONLY`;
+    }
+
 
     const belowTwenty = ['','ONE','TWO','THREE','FOUR','FIVE','SIX','SEVEN','EIGHT','NINE','TEN','ELEVEN','TWELVE','THIRTEEN','FOURTEEN','FIFTEEN','SIXTEEN','SEVENTEEN','EIGHTEEN','NINETEEN'];
     const tens = ['','','TWENTY','THIRTY','FORTY','FIFTY','SIXTY','SEVENTY','EIGHTY','NINETY'];
     const getWords = (n) => {
         if (n === 0) return '';
-        if (n < 20) return belowTwenty[n] + ' ';
-        if (n < 100) return tens[Math.floor(n/10)] + ' ' + belowTwenty[n%10];
-        return belowTwenty[Math.floor(n/100)] + ' HUNDRED ' + getWords(n%100);
+        let word = '';
+        if (n >= 100) {
+            word += belowTwenty[Math.floor(n / 100)] + ' HUNDRED ';
+            n %= 100;
+            if (n > 0) word += 'AND '; // Typically "AND" is used in Indian context
+        }
+        if (n >= 20) {
+            word += tens[Math.floor(n / 10)] + ' ';
+            n %= 10;
+        }
+        if (n > 0) { // handles 1-19
+            word += belowTwenty[n] + ' ';
+        }
+        return word.trim();
     };
 
     let words = '';
@@ -982,25 +1004,98 @@ function numberToWordsINR(num) {
 }
 // --- End Number to Words Helper ---
 
+// Keep your other GET and POST routes for orders (/ , /new, /:id, /:id/edit, PUT /:id, etc.)
+
+// --- NEW: Route to display a web view of the invoice (from response #79) ---
+router.get('/invoice/view/:orderId', ensureAuthenticated, async (req, res) => {
+    try {
+        const orderId = req.params.orderId;
+        if (!mongoose.Types.ObjectId.isValid(orderId)) {
+            return res.status(400).render('error_page', { title:"Error", message: "Invalid Order ID for view.", layout: './layouts/dashboard_layout'});
+        }
+        console.log(`Workspaceing order for web view: ${orderId}`);
+
+        const order = await Order.findById(orderId)
+            .populate({ path: 'storeId', model: 'Store', select: 'storeName address gstin stateCode phone' })
+            .populate({
+                path: 'warehouseId', model: 'Warehouse', select: 'name address companyId',
+                populate: { path: 'companyId', model: 'Company', select: 'companyName address gstin contactEmail mobileNumber upiId bankDetails fssaiLicenseNo' }
+            })
+            .populate({ path: 'orderItems.itemId', model: 'Item', select: 'name sku hsnCode uom gstRate mrp' })
+            .populate('createdBy', 'username')
+            .lean();
+
+        if (!order) {
+            return res.status(404).render('error_page', { title:"Not Found", message: "Invoice not found.", layout: './layouts/dashboard_layout'});
+        }
+
+        const sellerCompany = order.warehouseId?.companyId;
+        const receiverStore = order.storeId;
+
+        if (!sellerCompany || !receiverStore) {
+             return res.status(500).render('error_page', { title:"Error", message: "Required company or store details missing for invoice view.", layout: './layouts/dashboard_layout'});
+        }
+        
+        // Simplified GST Calculation for web view (reuse more detailed logic if needed)
+        let totalTaxableValue = 0; let overallTotalGSTAmount = 0;
+        order.orderItems.forEach(entry => { 
+            const item = entry.itemId;
+            if (!item) return;
+            const taxableValue = (entry.quantity * entry.priceAtOrder) - (entry.discountAmount || 0);
+            const gstRate = item.gstRate || 0;
+            const itemTotalGst = (taxableValue * gstRate) / 100;
+            entry.calculatedTaxableValue = taxableValue; // For template
+            entry.totalGstForItem = itemTotalGst;
+            entry.lineTotal = taxableValue + itemTotalGst;
+            totalTaxableValue += taxableValue;
+            overallTotalGSTAmount += itemTotalGst;
+        });
+        const grandTotalForInvoice = order.grandTotal !== undefined ? order.grandTotal : (totalTaxableValue + overallTotalGSTAmount - (order.totalDiscountAfterTax || 0) + (order.roundOff || 0));
+
+        const viewData = {
+            order: {
+                ...order,
+                invoiceNumber: order.invoiceNumber || `INV-${order._id.toString().slice(-6).toUpperCase()}`,
+                salesmanName: order.createdBy?.username,
+                grandTotal: grandTotalForInvoice,
+                amountInWords: numberToWordsINR(grandTotalForInvoice),
+                calculatedTotals: { totalTaxableValue, overallTotalGSTAmount } // Pass needed totals
+            },
+            seller: sellerCompany,
+            receiver: receiverStore,
+            currentDate: new Date()
+        };
+        
+        res.render('invoices/online_invoice_view', { 
+            title: `Invoice ${viewData.order.invoiceNumber}`,
+            invoiceData: viewData, 
+            layout: false 
+        });
+
+    } catch (err) {
+        console.error("Error displaying web invoice:", err);
+        res.status(500).render('error_page', { title: "Error", message: `Could not display invoice: ${err.message}`, layout: './layouts/dashboard_layout' });
+    }
+});
+
 
 // GET /orders/:id/invoice/pdf - Generate PDF invoice
-router.get('/:id/invoice/pdf', ensureAuthenticated, async (req, res) => { 
-    // ensureCanManageOrder could also be applied here for stricter access
+router.get('/:id/invoice/pdf', ensureAuthenticated, async (req, res) => {
     try {
         const orderId = req.params.id;
-        const { size, orientation } = req.query; // For page size and orientation
+        const { size, orientation } = req.query; 
 
         if (!mongoose.Types.ObjectId.isValid(orderId)) {
             return res.status(400).send("Invalid Order ID");
         }
-        console.log(`Generating invoice for order: ${orderId} (Size: ${size || 'a4'}, Orientation: ${orientation || 'portrait'})`);
+        console.log(`Generating invoice PDF for order: ${orderId} (Size: ${size || 'a4'}, Orientation: ${orientation || 'portrait'})`);
 
         const order = await Order.findById(orderId)
             .populate({ 
                 path: 'storeId', 
                 model: 'Store', 
-                select: 'storeName address gstin stateCode phone companyId', // Ensure these fields exist in your Store model
-                populate: { path: 'companyId', model: 'Company', select: 'companyName' } // For receiver's company name if needed
+                select: 'storeName address gstin stateCode phone companyId',
+                populate: { path: 'companyId', model: 'Company', select: 'companyName' } 
             })
             .populate({
                 path: 'warehouseId',
@@ -1008,65 +1103,56 @@ router.get('/:id/invoice/pdf', ensureAuthenticated, async (req, res) => {
                 select: 'name address companyId', 
                 populate: { 
                     path: 'companyId', 
-                    model: 'Company' // This will fetch the full seller company document
+                    model: 'Company' // Populates full seller company doc
                 } 
             })
             .populate({
                 path: 'orderItems.itemId',
                 model: 'Item',
-                select: 'name sku hsnCode uom gstRate mrp unitPrice' // Ensure these fields exist in your Item model
+                select: 'name sku hsnCode uom gstRate mrp unitPrice' 
             })
-            .populate('createdBy', 'username') // For Salesman
-            .populate({ // To get vehicle number
+            .populate('createdBy', 'username') 
+            .populate({ 
                 path: 'assignedDeliveryPartnerId', 
-                select: 'username currentVehicleId', // Select currentVehicleId from User
+                select: 'username currentVehicleId', 
                 populate: {
                     path: 'currentVehicleId',
                     model: 'Vehicle',
-                    select: 'vehicleNumber' // Select vehicleNumber from Vehicle
+                    select: 'vehicleNumber' 
                 }
             })
             .lean();
 
-        if (!order) {
-            return res.status(404).send("Order not found");
-        }
+        if (!order) return res.status(404).send("Order not found");
 
         const sellerCompany = order.warehouseId?.companyId;
-        if (!sellerCompany) {
-            return res.status(500).send("Seller company details (via warehouse) not found for this order.");
-        }
+        if (!sellerCompany) return res.status(500).send("Seller company details (via warehouse) not found.");
         
         const receiverStore = order.storeId;
-        if (!receiverStore) {
-            return res.status(500).send("Receiver (Store) details not found for this order.");
-        }
-        const consigneeStore = receiverStore; // Assuming consignee is same as receiver
+        if (!receiverStore) return res.status(500).send("Receiver (Store) details not found.");
+        const consigneeStore = receiverStore;
 
-        // GST Calculation Logic
         let totalTaxableValue = 0;
         let totalCGSTAmount = 0;
         let totalSGSTAmount = 0;
         let totalIGSTAmount = 0;
         let overallTotalGSTAmount = 0;
         let runningTotalQuantity = 0;
-
         const gstSummary = {}; 
 
-        const sellerStateCode = sellerCompany.address?.stateCode || sellerCompany.gstin?.substring(0,2); // Prefer stateCode from address
+        const sellerStateCode = sellerCompany.address?.stateCode || sellerCompany.gstin?.substring(0,2);
         const receiverStateCode = receiverStore.stateCode || receiverStore.gstin?.substring(0,2);
         const isIntraState = sellerStateCode && receiverStateCode && sellerStateCode === receiverStateCode;
-        console.log(`Seller State: ${sellerStateCode}, Receiver State: ${receiverStateCode}, Intra-state: ${isIntraState}`);
-
+        console.log(`PDF - Seller State: ${sellerStateCode}, Receiver State: ${receiverStateCode}, Intra-state: ${isIntraState}`);
 
         order.orderItems.forEach(entry => {
             const item = entry.itemId;
-            if (!item) { console.warn(`Invoice: Skipping item in order ${orderId} due to missing item details.`); return; }
+            if (!item) { console.warn(`PDF Invoice: Skipping item in order ${orderId} due to missing details.`); return; }
             
             const itemRate = parseFloat(entry.priceAtOrder) || 0;
             const itemQuantity = parseFloat(entry.quantity) || 0;
-            const itemDiscount = parseFloat(entry.discountAmount || 0); // Assume discountAmount is on orderItem
-            // const itemSchemeValue = parseFloat(entry.schemeValue || 0); // If you have scheme
+            const itemDiscount = parseFloat(entry.discountAmount || 0); 
+            const itemSchemeValue = parseFloat(entry.schemeValue || 0); 
 
             const grossValue = itemRate * itemQuantity;
             const taxableValue = grossValue - itemDiscount;
@@ -1109,14 +1195,32 @@ router.get('/:id/invoice/pdf', ensureAuthenticated, async (req, res) => {
             }
         });
         
-        // Use order.grandTotal if it's pre-calculated and trusted
         const grandTotalForInvoice = order.grandTotal !== undefined ? order.grandTotal : (totalTaxableValue + overallTotalGSTAmount - (order.totalDiscountAfterTax || 0) + (order.roundOff || 0));
         
-        let vehicleNumberForInvoice = order.vehicleNumber; // Check if already on order
+        let vehicleNumberForInvoice = order.vehicleNumber; 
         if (!vehicleNumberForInvoice && order.assignedDeliveryPartnerId?.currentVehicleId) {
-             // The currentVehicleId on assignedDeliveryPartnerId is already populated by the query
              vehicleNumberForInvoice = order.assignedDeliveryPartnerId.currentVehicleId?.vehicleNumber;
         }
+
+        // Generate QR Code for Online View
+        const onlineViewUrl = `${req.protocol}://${req.get('host')}/orders/invoice/view/${orderId}`;
+        let qrOnlineViewDataUrl = null;
+        try {
+            qrOnlineViewDataUrl = await qrcode.toDataURL(onlineViewUrl, { errorCorrectionLevel: 'M', width: 80, margin: 1 });
+        } catch (qrErr) { console.error("Error generating online view QR code:", qrErr); }
+        
+        // Generate Data for Verification QR
+        const verificationDataString = JSON.stringify({
+            invNo: order.invoiceNumber || `INV-${order._id.toString().slice(-6).toUpperCase()}`,
+            date: new Date(order.placedDate).toISOString().split('T')[0],
+            val: grandTotalForInvoice.toFixed(2),
+            s_gst: sellerCompany.gstin || '', // Abbreviated for QR space
+            r_gst: receiverStore.gstin || ''
+        });
+        let qrVerificationDataUrl = null;
+        try {
+            qrVerificationDataUrl = await qrcode.toDataURL(verificationDataString, { errorCorrectionLevel: 'M', width: 80, margin: 1 });
+        } catch (qrErr) { console.error("Error generating verification QR code:", qrErr); }
 
         const invoiceData = {
             order: {
@@ -1126,8 +1230,7 @@ router.get('/:id/invoice/pdf', ensureAuthenticated, async (req, res) => {
                 grandTotal: grandTotalForInvoice,
                 amountInWords: numberToWordsINR(grandTotalForInvoice),
                 vehicleNumber: vehicleNumberForInvoice,
-                billType: order.billType || 'CREDIT', // Default if not set
-                // Fields that might not be on your Order model yet, provide fallbacks
+                billType: order.billType || 'CREDIT', 
                 poNumber: order.poNumber || '-',
                 ackNo: order.ackNo || '-',
                 irn: order.irn || '-',
@@ -1147,7 +1250,9 @@ router.get('/:id/invoice/pdf', ensureAuthenticated, async (req, res) => {
             gstSummary: gstSummary,
             currentDate: new Date(),
             pageSetup: { size: size || 'a4', orientation: orientation || 'portrait' },
-            isIntraState: isIntraState 
+            isIntraState: isIntraState,
+            qrOnlineViewDataUrl: qrOnlineViewDataUrl,       
+            qrVerificationDataUrl: qrVerificationDataUrl
         };
 
         const templatePath = path.join(__dirname, '../views/invoices/invoice_template.ejs');
@@ -1160,16 +1265,10 @@ router.get('/:id/invoice/pdf', ensureAuthenticated, async (req, res) => {
             printBackground: true,
             margin: { top: '15mm', right: '10mm', bottom: '15mm', left: '10mm' } 
         };
-
-        if (size === 'a5' && orientation === 'landscape') {
-            pdfOptions.width = '210mm'; pdfOptions.height = '148mm';
-        } else if (size === 'a4' && orientation === 'landscape') {
-            pdfOptions.format = 'A4'; pdfOptions.landscape = true;
-        } else if (size === 'a5') { 
-            pdfOptions.format = 'A5'; pdfOptions.landscape = false;
-        } else { 
-            pdfOptions.format = 'A4'; pdfOptions.landscape = false;
-        }
+        if (size === 'a5' && orientation === 'landscape') { pdfOptions.width = '210mm'; pdfOptions.height = '148mm';} 
+        else if (size === 'a4' && orientation === 'landscape') { pdfOptions.format = 'A4'; pdfOptions.landscape = true; } 
+        else if (size === 'a5') { pdfOptions.format = 'A5'; pdfOptions.landscape = false; } 
+        else { pdfOptions.format = 'A4'; pdfOptions.landscape = false; }
 
         await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
         const pdfBuffer = await page.pdf(pdfOptions);
@@ -1188,78 +1287,4 @@ router.get('/:id/invoice/pdf', ensureAuthenticated, async (req, res) => {
     }
 });
 
-// --- NEW: Route to display a web view of the invoice ---
-router.get('/invoice/view/:orderId', ensureAuthenticated, async (req, res) => {
-    try {
-        const orderId = req.params.orderId;
-        if (!mongoose.Types.ObjectId.isValid(orderId)) {
-            return res.status(400).render('error_page', { title:"Error", message: "Invalid Order ID for view.", layout: './layouts/dashboard_layout'});
-        }
-        console.log(`Workspaceing order for web view: ${orderId}`);
-
-        // Fetch order data similar to PDF route, but might not need all company details
-        const order = await Order.findById(orderId)
-            .populate({ path: 'storeId', model: 'Store', select: 'storeName address gstin stateCode phone' })
-            .populate({
-                path: 'warehouseId', model: 'Warehouse', select: 'name address companyId',
-                populate: { path: 'companyId', model: 'Company', select: 'companyName address gstin contactEmail mobileNumber upiId bankDetails fssaiLicenseNo' }
-            })
-            .populate({ path: 'orderItems.itemId', model: 'Item', select: 'name sku hsnCode uom gstRate mrp' })
-            .populate('createdBy', 'username')
-            .lean();
-
-        if (!order) {
-            return res.status(404).render('error_page', { title:"Not Found", message: "Invoice not found.", layout: './layouts/dashboard_layout'});
-        }
-
-        const sellerCompany = order.warehouseId?.companyId;
-        const receiverStore = order.storeId;
-
-        if (!sellerCompany || !receiverStore) {
-             return res.status(500).render('error_page', { title:"Error", message: "Required company or store details missing for invoice view.", layout: './layouts/dashboard_layout'});
-        }
-        
-        // GST Calculation (simplified for example, reuse your PDF logic if more complex)
-        let totalTaxableValue = 0; let overallTotalGSTAmount = 0;
-        order.orderItems.forEach(entry => { /* ... (Simplified or reused GST calculation) ... */ 
-            const item = entry.itemId;
-            if (!item) return;
-            const taxableValue = (entry.quantity * entry.priceAtOrder) - (entry.discountAmount || 0);
-            const gstRate = item.gstRate || 0;
-            const itemTotalGst = (taxableValue * gstRate) / 100;
-            entry.calculatedTaxableValue = taxableValue;
-            entry.totalGstForItem = itemTotalGst;
-            entry.lineTotal = taxableValue + itemTotalGst;
-            totalTaxableValue += taxableValue;
-            overallTotalGSTAmount += itemTotalGst;
-        });
-        const grandTotalForInvoice = order.totalAmount || (totalTaxableValue + overallTotalGSTAmount - (order.totalDiscountAfterTax || 0) + (order.roundOff || 0));
-
-
-        // Data for a simpler EJS template (or reuse invoice_template with flags)
-        const viewData = {
-            order: {
-                ...order,
-                invoiceNumber: order.invoiceNumber || `INV-${order._id.toString().slice(-6).toUpperCase()}`,
-                salesmanName: order.createdBy?.username,
-                grandTotal: grandTotalForInvoice,
-                amountInWords: numberToWordsINR(grandTotalForInvoice)
-            },
-            seller: sellerCompany,
-            receiver: receiverStore,
-            currentDate: new Date()
-        };
-        
-        // Render a specific view, or potentially a simplified version of invoice_template
-        res.render('invoices/online_invoice_view', { 
-            title: `Invoice ${viewData.order.invoiceNumber}`,
-            invoiceData: viewData, 
-            layout: false // Or a very minimal layout
-        });
-
-    } catch (err) {
-        console.error("Error displaying web invoice:", err);
-        res.status(500).render('error_page', { title: "Error", message: `Could not display invoice: ${err.message}`, layout: './layouts/dashboard_layout' });
-    }
-});
 module.exports = router;

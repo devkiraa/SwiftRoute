@@ -17,36 +17,23 @@
 
         .invoice-container {
             width: 100%;
-            /* For print, page margins are usually handled by the browser/printer settings.
-               If specific margins are needed for content layout within the page: */
-            /* padding: 10mm; */ /* Example: 10mm margin around content */
             box-sizing: border-box;
-            min-height: 270mm; /* Approximate A4 height, adjust if needed */
+            min-height: 270mm; /* Approximate A4 height, adjust for content */
         }
 
-        /* Page size specific adjustments - primarily for on-screen preview.
-           Actual print scaling should handle A4/A5. */
         @media print {
             body {
-                font-size: 8pt; /* Slightly smaller for print if needed */
+                font-size: 8pt; 
             }
             .invoice-container {
                 margin: 0;
-                padding: 0; /* Remove padding for print if printer handles margins */
-                width: 100%; /* Ensure it uses full printable area */
+                padding: 0; 
+                width: 100%;
             }
             .no-print {
                 display: none;
             }
         }
-
-        /* A5 specific styling (approx 148mm x 210mm) */
-        /* This is harder to control perfectly without JS or specific print settings.
-           This is a general guide if you need to adjust for A5 significantly. */
-        /* @media (max-width: 150mm) {
-            body { font-size: 7pt; }
-        } */
-
 
         /* --- Helper Classes --- */
         .text-center { text-align: center !important; }
@@ -56,11 +43,11 @@
         .font-semibold { font-weight: 600; }
         .uppercase { text-transform: uppercase; }
         .italic { font-style: italic; }
-        .mt-1 { margin-top: 0.25rem; } /* 4px */
-        .mt-2 { margin-top: 0.5rem; }  /* 8px */
+        .mt-1 { margin-top: 0.25rem; } 
+        .mt-2 { margin-top: 0.5rem; }  
         .mb-1 { margin-bottom: 0.25rem; }
         .mb-2 { margin-bottom: 0.5rem; }
-        .mb-4 { margin-bottom: 1rem; } /* 16px */
+        .mb-4 { margin-bottom: 1rem; } 
         .p-1 { padding: 0.25rem; }
         .p-2 { padding: 0.5rem; }
 
@@ -93,7 +80,8 @@
         .header-section .invoice-main-title {
             font-size: 12pt;
             font-weight: bold;
-            text-align: right;
+            text-align: right; /* Aligns "Sales Invoice" to the right */
+            width: 100%; /* Ensures it takes full width to allow right alignment */
         }
          .header-section .invoice-subtitle {
             font-size: 7pt;
@@ -127,21 +115,22 @@
         .customer-invoice-details-section .label {
             font-weight: bold;
             display: inline-block;
-            min-width: 70px; /* Adjust as needed */
+            min-width: 70px; 
         }
 
         .items-section {
-            padding: 5px 10px; /* Reduced padding for items table */
+            padding: 5px 10px; 
+            flex-grow: 1; /* Allows items section to take available space */
         }
         .item-table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 7.5pt; /* Smaller font for item table */
+            font-size: 7.5pt; 
             margin-top: 5px;
         }
         .item-table th, .item-table td {
             border: 1px solid #000;
-            padding: 3px; /* Reduced padding */
+            padding: 3px; 
             text-align: left;
             vertical-align: top;
         }
@@ -151,10 +140,9 @@
             text-align: center;
         }
 
-        /* Column specific styling for item table */
         .item-table .col-sn { width: 3%; text-align: center; }
         .item-table .col-mrp { width: 5%; text-align: right; }
-        .item-table .col-item { width: 25%; } /* Adjusted width */
+        .item-table .col-item { width: 25%; } 
         .item-table .col-hsn { width: 7%; text-align: center; }
         .item-table .col-uom { width: 5%; text-align: center; }
         .item-table .col-qty { width: 5%; text-align: right; }
@@ -174,7 +162,6 @@
             text-align: right;
             padding-right: 10px;
         }
-
 
         .summary-section {
             padding: 10px 20px;
@@ -237,7 +224,6 @@
             text-align: center;
         }
 
-
         .footer-section {
             padding: 10px 20px;
             font-size: 7.5pt;
@@ -252,30 +238,71 @@
         .footer-section .terms-declaration strong {
             font-weight: bold;
         }
-        .footer-section .signatures {
-            margin-top: 15px; /* Reduced margin */
+
+        .qr-sig-section {
             display: flex;
             justify-content: space-between;
-            padding-top: 10px; /* Reduced padding */
+            align-items: flex-start; /* Align items to the top */
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px dashed #ccc;
         }
-        .footer-section .signature-block {
-            width: 45%;
+        .qr-sig-section .qr-verification-block {
+            width: 30%; /* Adjust width as needed */
             text-align: center;
         }
-        .footer-section .signature-line {
-            border-bottom: 1px solid #000;
-            height: 30px; /* Space for signature */
+        .qr-sig-section .qr-verification-block img {
+            width: 100px; /* Larger QR code */
+            height: 100px;
+            border: 1px solid #eee;
+            display: block;
+            margin: 0 auto 3px auto;
+        }
+        .qr-sig-section .qr-verification-block p {
+            font-size: 0.8em;
             margin-bottom: 3px;
         }
-        .footer-section .signature-block.receiver {
+        .qr-sig-section .signatures {
+            width: 65%; /* Adjust width as needed */
+            display: flex;
+            justify-content: space-between;
+        }
+        .qr-sig-section .signature-block {
+            width: 48%; /* Each signature block within the 'signatures' div */
+            text-align: center;
+        }
+        .qr-sig-section .signature-line {
+            border-bottom: 1px solid #000;
+            height: 30px; 
+            margin-bottom: 3px;
+            margin-top: 10px; /* Add some space above the line */
+        }
+         .qr-sig-section .signature-block.receiver {
             text-align: left;
         }
-        .footer-section .signature-block.sender {
+         .qr-sig-section .signature-block.sender {
             text-align: right;
         }
-        .footer-section .signature-block p {
+        .qr-sig-section .signature-block p {
             margin-top: 2px;
         }
+
+
+        .qr-online-view-container {
+            text-align: center; /* Center the small QR */
+            margin-top: 10px;
+            margin-bottom: 5px;
+        }
+        .qr-online-view-container img {
+            width: 70px;
+            height: 70px;
+            border: 1px solid #eee;
+        }
+        .qr-online-view-container p {
+            font-size: 0.7em;
+            margin-top: 2px;
+        }
+
         .footer-section .final-footer-text {
             text-align: center;
             font-size: 7pt;
@@ -284,21 +311,18 @@
             border-top: 1px dotted #ccc;
         }
 
-        /* Ensure content fills height for single page invoices */
         .invoice-wrapper {
             display: flex;
             flex-direction: column;
             min-height: 98vh; /* Try to fill viewport height, adjust for print */
         }
-        .items-section {
-            flex-grow: 1; /* Allows items section to take available space */
-        }
-
+      
     </style>
 </head>
 <body>
     <div class="invoice-container">
-        <div class="invoice-wrapper"> <section class="header-section">
+        <div class="invoice-wrapper"> 
+            <section class="header-section">
                 <div class="company-details">
                     <div class="company-name"><%= seller.companyName || 'SELLER COMPANY NAME' %></div>
                     <% if(seller.address) { %>
@@ -317,7 +341,7 @@
                     </div>
                 </div>
                 <div class="invoice-title-section">
-                    <div> </div>
+                    <div></div> 
                     <div class="invoice-main-title">
                         <%= order.invoiceType === 'TAX_INVOICE' ? 'TAX INVOICE' : 'Sales Invoice' %>
                     </div>
@@ -374,11 +398,11 @@
                     <tbody>
                         <% let runningTotalQuantity = 0; %>
                         <% let runningTotalDiscount = 0; %>
-                        <% let runningTotalScheme = 0; // Assuming scheme might be a value %>
+                        <% let runningTotalScheme = 0; %>
                         <% let runningTotalTaxableValue = 0; %>
                         <% let runningTotalCGSTAmount = 0; %>
                         <% let runningTotalSGSTAmount = 0; %>
-                        <% let runningTotalIGSTAmount = 0; // For IGST if applicable %>
+                        <% let runningTotalIGSTAmount = 0; %>
                         <% let runningGrandTotal = 0; %>
                         <% let gstSummary = {}; %>
 
@@ -389,17 +413,16 @@
 
                                 <% const itemRate = parseFloat(entry.priceAtOrder) || 0; %>
                                 <% const itemQuantity = parseFloat(entry.quantity) || 0; %>
-                                <% const itemDiscount = parseFloat(entry.discountAmount) || 0; // Per item discount amount %>
-                                <% const itemSchemeValue = parseFloat(entry.schemeValue) || 0; // Example: monetary value of scheme %>
+                                <% const itemDiscount = parseFloat(entry.discountAmount) || 0; %>
+                                <% const itemSchemeValue = parseFloat(entry.schemeValue) || 0; %>
 
                                 <% const grossValue = itemRate * itemQuantity; %>
-                                <% const taxableValue = grossValue - itemDiscount; // Assuming discount is applied before tax %>
+                                <% const taxableValue = grossValue - itemDiscount; %>
                                 
                                 <% const gstRate = parseFloat(item.gstRate) || 0; %>
                                 <% let cgstAmount = 0; let sgstAmount = 0; let igstAmount = 0; %>
                                 
-                                <% // Assuming seller.address.state and receiver.address.state are available to check for IGST %>
-                                <% const isIntraState = seller.address?.state?.toLowerCase() === receiver.address?.state?.toLowerCase(); %>
+                                <% const isIntraState = seller.address?.state?.trim().toLowerCase() === receiver.address?.state?.trim().toLowerCase(); %>
 
                                 <% if (isIntraState) { %>
                                     <% cgstAmount = (taxableValue * (gstRate / 2)) / 100; %>
@@ -437,15 +460,15 @@
                                     <td class="col-item"><%= item.name %> <% if (item.sku) { %>(<%= item.sku %>)<% } %></td>
                                     <td class="col-hsn"><%= item.hsnCode || '-' %></td>
                                     <td class="col-uom"><%= item.uom?.toUpperCase() || 'PCS' %></td>
-                                    <td class="col-qty num-align"><%= itemQuantity.toFixed(2) %></td>
-                                    <td class="col-rate num-align"><%= itemRate.toFixed(2) %></td>
-                                    <td class="col-disc num-align"><%= itemDiscount.toFixed(2) %></td>
-                                    <td class="col-scheme num-align"><%= itemSchemeValue.toFixed(2) %></td>
-                                    <td class="col-taxable num-align"><%= taxableValue.toFixed(2) %></td>
-                                    <td class="col-gst-perc num-align"><%= gstRate.toFixed(0) %>%</td>
-                                    <td class="col-cgst num-align"><%= cgstAmount.toFixed(2) %></td>
-                                    <td class="col-sgst num-align"><%= sgstAmount.toFixed(2) %></td>
-                                    <%# if (isIgstApplicable) { %> <td class="col-total num-align"><%= lineTotal.toFixed(2) %></td>
+                                    <td class="col-qty text-right"><%= itemQuantity.toFixed(2) %></td>
+                                    <td class="col-rate text-right"><%= itemRate.toFixed(2) %></td>
+                                    <td class="col-disc text-right"><%= itemDiscount.toFixed(2) %></td>
+                                    <td class="col-scheme text-right"><%= itemSchemeValue.toFixed(2) %></td>
+                                    <td class="col-taxable text-right"><%= taxableValue.toFixed(2) %></td>
+                                    <td class="col-gst-perc text-center"><%= gstRate.toFixed(0) %>%</td>
+                                    <td class="col-cgst text-right"><%= cgstAmount.toFixed(2) %></td>
+                                    <td class="col-sgst text-right"><%= sgstAmount.toFixed(2) %></td>
+                                    <%# if (isIgstApplicable) { %> <td class="col-total text-right"><%= lineTotal.toFixed(2) %></td>
                                 </tr>
                             <% }); %>
                         <% } else { %>
@@ -454,7 +477,7 @@
                     </tbody>
                     <tfoot>
                         <tr>
-                            <td colspan="5" class="footer-label">TOTALS:</td>
+                            <td colspan="5" class="footer-label text-right">TOTALS:</td>
                             <td class="col-qty text-right"><%= runningTotalQuantity.toFixed(2) %></td>
                             <td></td> <td class="col-disc text-right"><%= runningTotalDiscount.toFixed(2) %></td>
                             <td class="col-scheme text-right"><%= runningTotalScheme.toFixed(2) %></td>
@@ -482,7 +505,7 @@
                                     <th>Taxable Value</th>
                                     <th>CGST Amt</th>
                                     <th>SGST Amt</th>
-                                    <%# if (isIgstApplicable) { %> <th>Total GST</th>
+                                    <%# if (runningTotalIGSTAmount > 0) { %> <th>Total GST</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -492,7 +515,7 @@
                                     <td><%= amounts.taxable.toFixed(2) %></td>
                                     <td><%= amounts.cgst.toFixed(2) %></td>
                                     <td><%= amounts.sgst.toFixed(2) %></td>
-                                    <%# if (isIgstApplicable) { %> <td><%= amounts.totalGst.toFixed(2) %></td>
+                                    <%# if (runningTotalIGSTAmount > 0) { %> <td><%= amounts.totalGst.toFixed(2) %></td>
                                 </tr>
                                 <% }); %>
                             </tbody>
@@ -562,21 +585,47 @@
                     <% } %>
                 </div>
 
-                <div class="signatures">
-                    <div class="signature-block receiver">
-                        <p class="italic">Received in good condition</p>
-                        <div class="signature-line"></div>
-                        <p>(Party Signature)</p>
+                <div class="qr-sig-section">
+                    <div class="qr-verification-block">
+                        <% if (qrVerificationDataUrl) { %>
+                            <p>Verify Invoice (Encrypted):</p>
+                            <img src="<%= qrVerificationDataUrl %>" alt="Verify Invoice">
+                        <% } else { %>
+                            <div style="width: 100px; height: 100px; border: 1px solid #eee; display:flex; align-items:center; justify-content:center; font-size:0.7em; color: #777; margin: 0 auto 3px auto;">QR Verify</div>
+                            <p>Verify Invoice (Encrypted):</p>
+                        <% } %>
                     </div>
-                    <div class="signature-block sender">
-                        <p>For: <strong><%= seller.companyName || 'YOUR COMPANY NAME' %></strong></p>
-                        <div class="signature-line"></div>
-                        <p>(Authorised Signatory)</p>
+                    <div class="signatures">
+                        <div class="signature-block receiver">
+                            <p class="italic">Received in good condition</p>
+                            <div class="signature-line"></div>
+                            <p>(Party Signature)</p>
+                        </div>
+                        <div class="signature-block sender">
+                            <p>For: <strong><%= seller.companyName || 'YOUR COMPANY NAME' %></strong></p>
+                            <div class="signature-line"></div>
+                            <p>(Authorised Signatory)</p>
+                        </div>
                     </div>
                 </div>
+                
+                <div class="qr-online-view-container">
+                     <% if (qrOnlineViewDataUrl) { %>
+                        <div style="display: inline-block; text-align: center;">
+                            <img src="<%= qrOnlineViewDataUrl %>" alt="View Invoice Online">
+                            <p>Scan to View Online</p>
+                        </div>
+                    <% } else { %>
+                         <div style="display: inline-block; text-align: center;">
+                            <div style="width: 70px; height: 70px; border: 1px solid #eee; display:flex; align-items:center; justify-content:center; font-size:0.7em; color: #777;">QR Online</div>
+                            <p style="font-size: 0.7em; margin-top: 2px;">Scan to View Online</p>
+                        </div>
+                    <% } %>
+                </div>
+
                 <div class="final-footer-text">
                     This is a computer-generated invoice.
-                    <% if (currentDate) { %> | Print Time: <%= new Date(currentDate).toLocaleString('en-IN', {dateStyle: 'short', timeStyle: 'short'}) %><% } %>
+                    <% if (typeof currentDate !== 'undefined' && currentDate) { %> | Print Time: <%= new Date(currentDate).toLocaleString('en-IN', {dateStyle: 'short', timeStyle: 'short'}) %><% } %>
                 </div>
             </section>
         </div> </div> </body>
