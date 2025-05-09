@@ -29,9 +29,10 @@
             <% if (locals.loggedInUser && ['warehouse_owner', 'admin', 'store_owner', 'employee'].includes(locals.loggedInUser.role)) { %>
                 <% 
                     let downloadUrl = '/reporting/sales-summary/csv'; 
-                    if (typeof currentFilters !== 'undefined' && currentFilters.startDate && currentFilters.endDate) {
-                        downloadUrl += `?startDate=${currentFilters.startDate}&endDate=${currentFilters.endDate}`;
-                    }
+                    let queryParams = new URLSearchParams();
+                    if (typeof currentFilters !== 'undefined' && currentFilters.startDate) { queryParams.append('startDate', currentFilters.startDate); }
+                    if (typeof currentFilters !== 'undefined' && currentFilters.endDate) { queryParams.append('endDate', currentFilters.endDate); }
+                    if (queryParams.toString()) { downloadUrl += `?${queryParams.toString()}`; }
                 %>
                 <a href="<%= downloadUrl %>" 
                    class="inline-flex items-center px-3 py-1.5 border border-green-600 text-xs font-medium rounded-md text-green-700 bg-green-50 hover:bg-green-100">
@@ -61,9 +62,8 @@
             </div>
         <% } %>
 
-        <%# --- ROLE-BASED REPORT SECTIONS --- %>
+        <%# --- Warehouse Owner / Admin Reports --- %>
         <% if (locals.loggedInUser && ['warehouse_owner', 'admin'].includes(locals.loggedInUser.role)) { %>
-            <%# Admin / Warehouse Owner View %>
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 
                 <div class="bg-white border rounded-lg shadow-sm p-4">
@@ -81,7 +81,7 @@
                     <h3 class="text-base font-semibold text-gray-700 mb-3">Orders by Status</h3>
                     <% if (reportData.orderStatusCounts && reportData.orderStatusCounts.length > 0) { %>
                         <ul class="space-y-1"> <% reportData.orderStatusCounts.forEach(status => { %> <li class="flex justify-between text-sm"> <span class="capitalize font-medium text-gray-600"><%= status._id %>:</span> <span class="font-semibold text-gray-800"><%= status.count %></span> </li> <% }); %> </ul>
-                    <% } else { %><p class="text-sm text-gray-500 italic">No order data for the selected period.</p><% } %>
+                    <% } else { %><p class="text-sm text-gray-500 italic">No order data for selected period.</p><% } %>
                 </div>
 
                 <div class="bg-white border rounded-lg shadow-sm p-4">
@@ -139,13 +139,109 @@
                         </dl>
                     <% } else { %><p class="text-sm text-gray-500 italic">Performance data not available.</p><% } %>
                 </div>
-            </div> 
-            
-            <%# Detailed Tables for Admin/Warehouse Owner - Placeholder for future expansion %>
-            <div class="mt-8 space-y-6">
-                 </div>
-        
-        <% } else if (locals.loggedInUser && ['store_owner', 'employee'].includes(locals.loggedInUser.role)) { %>
+            </div> <div class="mt-8 space-y-6">
+                <div class="bg-white border rounded-lg shadow-sm">
+                    <div class="px-4 py-3 border-b bg-gray-50 rounded-t-lg">
+                        <h3 class="text-base font-semibold text-gray-700">Fuel Consumption by Vehicle</h3>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead class="bg-gray-100 text-xs uppercase text-gray-500">
+                                <tr>
+                                    <th class="px-4 py-2 font-medium">Vehicle No.</th>
+                                    <th class="px-4 py-2 font-medium">Model</th>
+                                    <th class="px-4 py-2 font-medium text-right">Fuel Logs</th>
+                                    <th class="px-4 py-2 font-medium text-right">Total Liters</th>
+                                    <th class="px-4 py-2 font-medium text-right">Total Cost (₹)</th>
+                                    <th class="px-4 py-2 font-medium text-right">Avg. Cost/Liter (₹)</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y text-sm text-gray-700">
+                                <% if (reportData.perVehicleFuelStats && reportData.perVehicleFuelStats.length > 0) { %>
+                                    <% reportData.perVehicleFuelStats.forEach(stat => { %>
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2 font-mono"><%= stat.vehicleNumber %></td>
+                                            <td class="px-4 py-2"><%= stat.modelName %></td>
+                                            <td class="px-4 py-2 text-right"><%= stat.logCount %></td>
+                                            <td class="px-4 py-2 text-right"><%= stat.totalLiters.toFixed(2) %></td>
+                                            <td class="px-4 py-2 text-right"><%= stat.totalCost.toFixed(2) %></td>
+                                            <td class="px-4 py-2 text-right"><%= stat.avgCostPerLiter.toFixed(2) %></td>
+                                        </tr>
+                                    <% }); %>
+                                <% } else { %>
+                                    <tr><td colspan="6" class="text-center py-4 text-gray-500 italic">No per-vehicle fuel data for selected period.</td></tr>
+                                <% } %>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="bg-white border rounded-lg shadow-sm">
+                    <div class="px-4 py-3 border-b bg-gray-50 rounded-t-lg">
+                        <h3 class="text-base font-semibold text-gray-700">Trip Statistics by Vehicle</h3>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                             <thead class="bg-gray-100 text-xs uppercase text-gray-500">
+                                <tr>
+                                    <th class="px-4 py-2 font-medium">Vehicle No.</th>
+                                    <th class="px-4 py-2 font-medium">Model</th>
+                                    <th class="px-4 py-2 font-medium text-right">Completed Trips</th>
+                                    <th class="px-4 py-2 font-medium text-right">Total Distance (km)</th>
+                                    <th class="px-4 py-2 font-medium text-right">Avg Distance/Trip (km)</th>
+                                </tr>
+                            </thead>
+                             <tbody class="divide-y text-sm text-gray-700">
+                                <% if (reportData.perVehicleTripStats && reportData.perVehicleTripStats.length > 0) { %>
+                                    <% reportData.perVehicleTripStats.forEach(stat => { %>
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2 font-mono"><%= stat.vehicleNumber %></td>
+                                            <td class="px-4 py-2"><%= stat.modelName %></td>
+                                            <td class="px-4 py-2 text-right"><%= stat.totalTrips %></td>
+                                            <td class="px-4 py-2 text-right"><%= stat.totalDistanceKm.toFixed(1) %></td>
+                                            <td class="px-4 py-2 text-right"><%= stat.avgDistancePerTrip.toFixed(1) %></td>
+                                        </tr>
+                                    <% }); %>
+                                <% } else { %>
+                                    <tr><td colspan="5" class="text-center py-4 text-gray-500 italic">No per-vehicle trip data for selected period.</td></tr>
+                                <% } %>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="bg-white border rounded-lg shadow-sm">
+                    <div class="px-4 py-3 border-b bg-gray-50 rounded-t-lg">
+                        <h3 class="text-base font-semibold text-gray-700">Trip Statistics by Driver</h3>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                             <thead class="bg-gray-100 text-xs uppercase text-gray-500">
+                                <tr>
+                                    <th class="px-4 py-2 font-medium">Driver Name</th>
+                                    <th class="px-4 py-2 font-medium text-right">Completed Trips</th>
+                                    <th class="px-4 py-2 font-medium text-right">Total Distance (km)</th>
+                                    <th class="px-4 py-2 font-medium text-right">Avg Distance/Trip (km)</th>
+                                </tr>
+                            </thead>
+                             <tbody class="divide-y text-sm text-gray-700">
+                                <% if (reportData.perDriverTripStats && reportData.perDriverTripStats.length > 0) { %>
+                                    <% reportData.perDriverTripStats.forEach(stat => { %>
+                                        <tr class="hover:bg-gray-50">
+                                            <td class="px-4 py-2"><%= stat.driverName %></td>
+                                            <td class="px-4 py-2 text-right"><%= stat.totalTrips %></td>
+                                            <td class="px-4 py-2 text-right"><%= stat.totalDistanceKm.toFixed(1) %></td>
+                                            <td class="px-4 py-2 text-right"><%= stat.avgDistancePerTrip.toFixed(1) %></td>
+                                        </tr>
+                                    <% }); %>
+                                <% } else { %>
+                                    <tr><td colspan="4" class="text-center py-4 text-gray-500 italic">No per-driver trip data for selected period.</td></tr>
+                                <% } %>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div> <% } else if (locals.loggedInUser && ['store_owner', 'employee'].includes(locals.loggedInUser.role)) { %>
              <%# Store Owner / Employee View %>
              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                  <div class="bg-white border rounded-lg shadow-sm p-4">
@@ -175,19 +271,20 @@
                         <p class="text-sm text-gray-500 italic">No delivery data for selected period.</p> 
                     <% } %>
                  </div>
-                 <%# TODO: Add Driver's personal Trip/Fuel Summary here %>
                  <div class="bg-white border rounded-lg shadow-sm p-4">
                     <h3 class="text-base font-semibold text-gray-700 mb-3">My Vehicle Logs</h3>
-                    <p class="text-sm text-gray-500 italic">Detailed trip and fuel logs coming soon!</p>
-                    <a href="/reporting/trips" class="text-xs text-blue-600 hover:underline mt-2 inline-block">View My Trip Logs</a><br>
-                    <a href="/reporting/fuel-logs" class="text-xs text-blue-600 hover:underline mt-1 inline-block">View My Fuel Logs</a>
+                     <p class="text-sm text-gray-500 mb-2">View your detailed activity logs:</p>
+                     <div class="space-y-1">
+                         <a href="/reporting/trips" class="block text-sm text-blue-600 hover:underline">View My Trip Logs</a>
+                         <a href="/reporting/fuel-logs" class="block text-sm text-blue-600 hover:underline">View My Fuel Logs</a>
+                     </div>
                  </div>
              </div>
-        <% } else { %>
-            <%# Fallback for other roles or if role data is missing %>
+        <% } else if (locals.loggedInUser) { %>
+            <%# Fallback for any other authenticated roles not explicitly covered %>
             <div class="bg-white border rounded-lg shadow-sm p-6 text-center">
-                 <p class="text-gray-600">No specific report view available for your role (<%= locals.loggedInUser?.role || 'Unknown' %>).</p>
-            </div>
+                 <p class="text-gray-600">No specific report view available for your role (<%= locals.loggedInUser.role %>).</p>
+             </div>
         <% } %>
 
     <% } %> <%# End check for reportData %>

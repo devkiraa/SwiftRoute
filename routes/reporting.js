@@ -9,6 +9,7 @@ const User = require('../models/User');
 const Company = require('../models/Company');
 const TripLog = require('../models/TripLog'); // <-- Add TripLog
 const FuelLog = require('../models/FuelLog'); // <-- Add FuelLog
+const Vehicle = require('../models/Vehicle');
 
 const router = express.Router();
 
@@ -42,7 +43,7 @@ function parseDateFilter(dateString, isEndDate = false) {
     }
 }
 
-// GET /reporting - Display reporting dashboard based on role (with Date Filters)
+// GET /reporting - Display reporting dashboard based on role
 router.get('/', async (req, res) => {
     const loggedInUser = res.locals.loggedInUser;
     let reportData = { 
@@ -50,49 +51,35 @@ router.get('/', async (req, res) => {
         salesSummary: {}, pnlSummary: {}, orderStatusCounts: [], inventorySummary: {},
         deliveryStatusCounts: [], customerCount: 0, 
         tripSummary: {}, fuelSummary: {}, vehiclePerformance: {},
-        perVehicleFuelStats: [], // <-- NEW
-        perVehicleTripStats: [],  // <-- NEW
-        perDriverTripStats: [] 
+        perVehicleFuelStats: [], 
+        perVehicleTripStats: [],  
+        perDriverTripStats: []   
     }; 
     let viewTitle = 'Reports';
     console.log(`--- Accessing GET /reporting for role: ${loggedInUser.role} ---`);
-    console.log("Query Params Received:", req.query);
 
     try {
         const companyId = loggedInUser.companyId?._id || loggedInUser.companyId;
         const storeIdForUser = loggedInUser.storeId?._id || loggedInUser.storeId;
 
-        // --- Process Date Filters ---
         let startDate = parseDateFilter(req.query.startDate);
         let endDate = parseDateFilter(req.query.endDate, true); 
 
-        // Default date range (e.g., current month) if none provided or invalid
         if (!startDate || !endDate || startDate > endDate) {
-            console.log("Applying default date range (Current Month)");
             const now = new Date();
-            startDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)); // Start of current month UTC
-            endDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59, 999)); // End of current month UTC
-            
-            // If you prefer last 30 days:
-            // endDate = new Date(); 
-            // endDate.setUTCHours(23, 59, 59, 999); 
-            // startDate = new Date(endDate);
-            // startDate.setUTCDate(startDate.getUTCDate() - 30); 
-            // startDate.setUTCHours(0, 0, 0, 0); 
+            startDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)); 
+            endDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59, 999));
         }
         
-        // Format dates back to YYYY-MM-DD for sending to the view's input fields
         const currentFilters = {
             startDate: startDate.toISOString().split('T')[0],
             endDate: endDate.toISOString().split('T')[0]
         };
         console.log("Effective Date Range (UTC):", startDate.toISOString(), "to", endDate.toISOString());
 
-        // --- Define Date Range Matchers ---
-        // Use $match stages with these date objects
         const dateFilterOrders = { placedDate: { $gte: startDate, $lte: endDate } }; 
-        const dateFilterDelivered = { updatedDate: { $gte: startDate, $lte: endDate } }; // For delivered revenue/cogs
-        const dateFilterTrips = { tripStartDate: { $gte: startDate, $lte: endDate } }; // Filter trips based on start date
+        const dateFilterDeliveredOrders = { updatedDate: { $gte: startDate, $lte: endDate } }; 
+        const dateFilterTrips = { tripStartDate: { $gte: startDate, $lte: endDate } }; 
         const dateFilterFuel = { logDate: { $gte: startDate, $lte: endDate } }; 
 
         switch (loggedInUser.role) {
@@ -102,30 +89,27 @@ router.get('/', async (req, res) => {
                 const relevantStoreIds = loggedInUser.role === 'admin' ? null : (await Store.find({ companyId: companyId }).select('_id').lean()).map(s => s._id);
                 const relevantWarehouseIds = loggedInUser.role === 'admin' ? null : (await Warehouse.find({ companyId: companyId }).select('_id').lean()).map(w => w._id);
 
-                const matchCompanyOrders = loggedInUser.role === 'admin' ? {} : { storeId: { $in: relevantStoreIds }};
-                const matchCompanyItems = loggedInUser.role === 'admin' ? {} : { warehouseId: { $in: relevantWarehouseIds }};
+                const matchCompanyOrders = loggedInUser.role === 'admin' ? {} : { storeId: { $in: relevantStoreIds || [] }}; // Handle empty relevantStoreIds
+                const matchCompanyItems = loggedInUser.role === 'admin' ? {} : { warehouseId: { $in: relevantWarehouseIds || [] }};
                 const matchCompanyTrips = loggedInUser.role === 'admin' ? {} : { companyId: companyId }; 
                 const matchCompanyFuel = loggedInUser.role === 'admin' ? {} : { companyId: companyId }; 
 
-                // --- Run Aggregations with Date Filters ---
-                
-                // Order Status Counts (filter by placedDate)
+                // Order Status Counts
                 reportData.orderStatusCounts = await Order.aggregate([ 
                     { $match: { ...matchCompanyOrders, ...dateFilterOrders } }, 
-                    { $group: { _id: '$orderStatus', count: { $sum: 1 } } }, 
-                    { $sort: { _id: 1 } } 
+                    { $group: { _id: '$orderStatus', count: { $sum: 1 } } }, { $sort: { _id: 1 } } 
                 ]);
                 
-                // Revenue (filter by updatedDate when status became 'delivered')
+                // Revenue
                 const totalSalesResult = await Order.aggregate([ 
-                    { $match: { ...matchCompanyOrders, orderStatus: 'delivered', ...dateFilterDelivered } }, 
+                    { $match: { ...matchCompanyOrders, orderStatus: 'delivered', ...dateFilterDeliveredOrders } }, 
                     { $group: { _id: null, totalRevenue: { $sum: '$totalAmount' } } } 
                 ]);
                 reportData.salesSummary.totalRevenue = totalSalesResult[0]?.totalRevenue || 0;
                 
-                // COGS (match same orders as revenue)
+                // COGS
                 const cogsResult = await Order.aggregate([ 
-                    { $match: { ...matchCompanyOrders, orderStatus: 'delivered', ...dateFilterDelivered } }, 
+                    { $match: { ...matchCompanyOrders, orderStatus: 'delivered', ...dateFilterDeliveredOrders } }, 
                     { $unwind: '$orderItems' }, 
                     { $lookup: { from: Item.collection.name, localField: 'orderItems.itemId', foreignField: '_id', as: 'itemDetails' }}, 
                     { $unwind: { path: '$itemDetails', preserveNullAndEmptyArrays: true } }, 
@@ -134,11 +118,11 @@ router.get('/', async (req, res) => {
                 reportData.pnlSummary.totalCOGS = cogsResult[0]?.totalCOGS || 0;
                 reportData.pnlSummary.grossProfit = reportData.salesSummary.totalRevenue - reportData.pnlSummary.totalCOGS;
                 
-                // Inventory Summary (Point-in-time, no date filter usually applied)
+                // Inventory Summary
                 const inventoryData = await Item.aggregate([ { $match: matchCompanyItems }, { $group: { _id: null, totalItems: { $sum: '$quantity' }, distinctSKUs: { $addToSet: '$sku'}, totalCostValue: { $sum: { $multiply: ['$quantity', '$unitPrice'] } } }}, { $project: { _id: 0, totalItems: 1, distinctSKUs: { $size: '$distinctSKUs' }, totalCostValue: 1 }} ]);
                 reportData.inventorySummary = inventoryData[0] || { totalItems: 0, distinctSKUs: 0, totalCostValue: 0 };
 
-                // Trip Summary (Filter completed trips within date range by start date)
+                // Overall Trip Summary
                 const tripStats = await TripLog.aggregate([
                     { $match: { ...matchCompanyTrips, status: 'completed', startOdometer: { $ne: null }, endOdometer: { $ne: null }, ...dateFilterTrips } }, 
                     { $project: { distance: { $subtract: ["$endOdometer", "$startOdometer"] } }},
@@ -148,12 +132,10 @@ router.get('/', async (req, res) => {
                  reportData.tripSummary = {
                      totalCompletedTrips: tripStats[0]?.totalTrips || 0,
                      totalDistanceKm: parseFloat((tripStats[0]?.totalDistanceKm || 0).toFixed(1)),
+                     averageDistanceKm: (tripStats[0]?.totalTrips > 0) ? parseFloat(((tripStats[0]?.totalDistanceKm || 0) / tripStats[0]?.totalTrips).toFixed(1)) : 0,
                  };
-                 reportData.tripSummary.averageDistanceKm = (reportData.tripSummary.totalCompletedTrips > 0) 
-                    ? parseFloat((reportData.tripSummary.totalDistanceKm / reportData.tripSummary.totalCompletedTrips).toFixed(1)) 
-                    : 0;
 
-                // Fuel Log Summary (Filter fuel logs by log date)
+                // Overall Fuel Log Summary
                  const fuelStats = await FuelLog.aggregate([
                      { $match: { ...matchCompanyFuel, ...dateFilterFuel } }, 
                      { $group: { _id: null, totalFuelLiters: { $sum: "$fuelQuantityLiters" }, totalFuelCost: { $sum: "$fuelCostTotalINR" }, logCount: { $sum: 1 } }}
@@ -161,146 +143,92 @@ router.get('/', async (req, res) => {
                  reportData.fuelSummary = {
                      totalFuelLiters: parseFloat((fuelStats[0]?.totalFuelLiters || 0).toFixed(2)),
                      totalFuelCost: parseFloat((fuelStats[0]?.totalFuelCost || 0).toFixed(2)),
-                     logCount: fuelStats[0]?.logCount || 0
+                     logCount: fuelStats[0]?.logCount || 0,
+                     averageCostPerLiter: (fuelStats[0]?.totalFuelLiters > 0) ? parseFloat(((fuelStats[0]?.totalFuelCost || 0) / fuelStats[0]?.totalFuelLiters).toFixed(2)) : 0,
                  };
-                 reportData.fuelSummary.averageCostPerLiter = (reportData.fuelSummary.totalFuelLiters > 0) 
-                    ? parseFloat((reportData.fuelSummary.totalFuelCost / reportData.fuelSummary.totalFuelLiters).toFixed(2)) 
-                    : 0;
                  
-                // Calculate Vehicle Performance based on filtered totals
-                const totalDistance = reportData.tripSummary.totalDistanceKm;
-                const totalFuel = reportData.fuelSummary.totalFuelLiters;
-                const totalCost = reportData.fuelSummary.totalFuelCost;
+                // Overall Vehicle Performance
                 reportData.vehiclePerformance = {
-                    fuelEfficiencyKmL: (totalDistance > 0 && totalFuel > 0) ? (totalDistance / totalFuel).toFixed(2) : 'N/A',
-                    costPerKm: (totalDistance > 0 && totalCost > 0) ? (totalCost / totalDistance).toFixed(2) : 'N/A'
+                    fuelEfficiencyKmL: (reportData.tripSummary.totalDistanceKm > 0 && reportData.fuelSummary.totalFuelLiters > 0) ? (reportData.tripSummary.totalDistanceKm / reportData.fuelSummary.totalFuelLiters).toFixed(2) : 'N/A',
+                    costPerKm: (reportData.tripSummary.totalDistanceKm > 0 && reportData.fuelSummary.totalFuelCost > 0) ? (reportData.fuelSummary.totalFuelCost / reportData.tripSummary.totalDistanceKm).toFixed(2) : 'N/A'
                 };
 
-                viewTitle = loggedInUser.role === 'admin' ? 'Platform Reports' : 'Company Reports';
-                break;
+                // Per-Vehicle Fuel Stats
                 reportData.perVehicleFuelStats = await FuelLog.aggregate([
                     { $match: { ...matchCompanyFuel, ...dateFilterFuel } },
-                    { $group: {
-                        _id: "$vehicleId",
-                        totalLiters: { $sum: "$fuelQuantityLiters" },
-                        totalCost: { $sum: "$fuelCostTotalINR" },
-                        logCount: { $sum: 1 }
-                    }},
+                    { $group: { _id: "$vehicleId", totalLiters: { $sum: "$fuelQuantityLiters" }, totalCost: { $sum: "$fuelCostTotalINR" }, logCount: { $sum: 1 } }},
                     { $lookup: { from: Vehicle.collection.name, localField: "_id", foreignField: "_id", as: "vehicleDetails" }},
-                    { $unwind: { path: "$vehicleDetails", preserveNullAndEmptyArrays: true } }, // Keep if vehicle deleted but logs exist
-                    { $project: {
-                        _id: 0, vehicleId: "$_id",
-                        vehicleNumber: { $ifNull: [ "$vehicleDetails.vehicleNumber", "Unknown Vehicle" ] },
-                        modelName: { $ifNull: [ "$vehicleDetails.modelName", "" ] },
-                        totalLiters: { $round: ["$totalLiters", 2] },
-                        totalCost: { $round: ["$totalCost", 2] },
-                        logCount: "$logCount",
-                        avgCostPerLiter: { 
-                            $cond: { if: { $gt: ["$totalLiters", 0] }, then: { $round: [{ $divide: ["$totalCost", "$totalLiters"] }, 2] }, else: 0 }
-                        }
-                    }},
+                    { $unwind: { path: "$vehicleDetails", preserveNullAndEmptyArrays: true } },
+                    { $project: { _id: 0, vehicleId: "$_id", vehicleNumber: { $ifNull: [ "$vehicleDetails.vehicleNumber", "Unknown" ] }, modelName: { $ifNull: [ "$vehicleDetails.modelName", "" ] }, totalLiters: { $round: ["$totalLiters", 2] }, totalCost: { $round: ["$totalCost", 2] }, logCount: 1, avgCostPerLiter: { $cond: { if: { $gt: ["$totalLiters", 0] }, then: { $round: [{ $divide: ["$totalCost", "$totalLiters"] }, 2] }, else: 0 } } }},
                     { $sort: { vehicleNumber: 1 } }
                 ]);
-                console.log("Per-Vehicle Fuel Stats Count:", reportData.perVehicleFuelStats.length);
 
-                // --- NEW: Per-Vehicle Trip Stats ---
+                // Per-Vehicle Trip Stats
                 reportData.perVehicleTripStats = await TripLog.aggregate([
                     { $match: { ...matchCompanyTrips, status: 'completed', startOdometer: { $ne: null }, endOdometer: { $ne: null }, ...dateFilterTrips } },
                     { $project: { vehicleId: 1, distance: { $subtract: ["$endOdometer", "$startOdometer"] } }},
                     { $match: { distance: { $gte: 0 } } },
-                    { $group: {
-                        _id: "$vehicleId",
-                        totalTrips: { $sum: 1 },
-                        totalDistanceKm: { $sum: "$distance" }
-                    }},
+                    { $group: { _id: "$vehicleId", totalTrips: { $sum: 1 }, totalDistanceKm: { $sum: "$distance" } }},
                     { $lookup: { from: Vehicle.collection.name, localField: "_id", foreignField: "_id", as: "vehicleDetails" }},
                     { $unwind: { path: "$vehicleDetails", preserveNullAndEmptyArrays: true } },
-                    { $project: {
-                        _id: 0, vehicleId: "$_id",
-                        vehicleNumber: { $ifNull: [ "$vehicleDetails.vehicleNumber", "Unknown Vehicle" ] },
-                        modelName: { $ifNull: [ "$vehicleDetails.modelName", "" ] },
-                        totalTrips: "$totalTrips",
-                        totalDistanceKm: { $round: ["$totalDistanceKm", 1] },
-                        avgDistancePerTrip: {
-                             $cond: { if: { $gt: ["$totalTrips", 0] }, then: { $round: [{ $divide: ["$totalDistanceKm", "$totalTrips"] }, 1] }, else: 0 }
-                        }
-                    }},
+                    { $project: { _id: 0, vehicleId: "$_id", vehicleNumber: { $ifNull: [ "$vehicleDetails.vehicleNumber", "Unknown" ] }, modelName: { $ifNull: [ "$vehicleDetails.modelName", "" ] }, totalTrips: 1, totalDistanceKm: { $round: ["$totalDistanceKm", 1] }, avgDistancePerTrip: { $cond: { if: { $gt: ["$totalTrips", 0] }, then: { $round: [{ $divide: ["$totalDistanceKm", "$totalTrips"] }, 1] }, else: 0 } } }},
                     { $sort: { vehicleNumber: 1 } }
                 ]);
-                console.log("Per-Vehicle Trip Stats Count:", reportData.perVehicleTripStats.length);
 
-                // --- NEW: Per-Driver Trip Stats ---
+                // Per-Driver Trip Stats
                 reportData.perDriverTripStats = await TripLog.aggregate([
                     { $match: { ...matchCompanyTrips, status: 'completed', startOdometer: { $ne: null }, endOdometer: { $ne: null }, ...dateFilterTrips } },
                     { $project: { driverId: 1, distance: { $subtract: ["$endOdometer", "$startOdometer"] } }},
                     { $match: { distance: { $gte: 0 } } },
-                    { $group: {
-                        _id: "$driverId",
-                        totalTrips: { $sum: 1 },
-                        totalDistanceKm: { $sum: "$distance" }
-                    }},
+                    { $group: { _id: "$driverId", totalTrips: { $sum: 1 }, totalDistanceKm: { $sum: "$distance" } }},
                     { $lookup: { from: User.collection.name, localField: "_id", foreignField: "_id", as: "driverDetails" }},
-                    { $unwind: { path: "$driverDetails", preserveNullAndEmptyArrays: true } }, // Keep if driver deleted
-                    { $project: {
-                        _id: 0, driverId: "$_id",
-                        driverName: { $ifNull: [ "$driverDetails.username", "Unknown Driver" ] },
-                        totalTrips: "$totalTrips",
-                        totalDistanceKm: { $round: ["$totalDistanceKm", 1] },
-                        avgDistancePerTrip: {
-                             $cond: { if: { $gt: ["$totalTrips", 0] }, then: { $round: [{ $divide: ["$totalDistanceKm", "$totalTrips"] }, 1] }, else: 0 }
-                        }
-                    }},
+                    { $unwind: { path: "$driverDetails", preserveNullAndEmptyArrays: true } },
+                    { $project: { _id: 0, driverId: "$_id", driverName: { $ifNull: [ "$driverDetails.username", "Unknown" ] }, totalTrips: 1, totalDistanceKm: { $round: ["$totalDistanceKm", 1] }, avgDistancePerTrip: { $cond: { if: { $gt: ["$totalTrips", 0] }, then: { $round: [{ $divide: ["$totalDistanceKm", "$totalTrips"] }, 1] }, else: 0 } } }},
                     { $sort: { driverName: 1 } }
                 ]);
-                console.log("Per-Driver Trip Stats Count:", reportData.perDriverTripStats.length);
                 
                 viewTitle = loggedInUser.role === 'admin' ? 'Platform Reports' : 'Company Reports';
                 break;
+
             case 'store_owner':
             case 'employee':
-                // Add date filters to store-specific aggregations
                  if (!storeIdForUser) throw new Error("User not assigned to a store.");
                  viewTitle = 'Store Reports';
                  const storeMatch = { storeId: storeIdForUser };
-
                  reportData.orderStatusCounts = await Order.aggregate([ { $match: { ...storeMatch, ...dateFilterOrders } }, { $group: { _id: '$orderStatus', count: { $sum: 1 } } }, { $sort: { _id: 1 } } ]);
                  const storeSalesResult = await Order.aggregate([ { $match: { ...storeMatch, orderStatus: 'delivered', ...dateFilterDeliveredOrders } }, { $group: { _id: null, totalRevenue: { $sum: '$totalAmount' } } } ]);
                  reportData.salesSummary.totalRevenue = storeSalesResult[0]?.totalRevenue || 0;
-                 // Customer count isn't typically date-filtered unless you track first order date
                  reportData.customerCount = await User.countDocuments({ storeId: storeIdForUser, role: 'customer'}); 
                 break;
 
             case 'delivery_partner':
                 viewTitle = 'My Delivery Report';
                 const driverMatch = { assignedDeliveryPartnerId: loggedInUser._id };
-                // Filter driver's deliveries by completion date (updatedDate)
                 reportData.deliveryStatusCounts = await Order.aggregate([
-                     { $match: { ...driverMatch, orderStatus: { $in: ['shipped', 'delivered', 'cancelled'] }, ...dateFilterDeliveredOrders } }, // Filter relevant statuses within date range
-                     { $group: { _id: '$orderStatus', count: { $sum: 1 } } },
-                     { $sort: { _id: 1 } }
+                     { $match: { ...driverMatch, orderStatus: { $in: ['shipped', 'delivered', 'cancelled'] }, ...dateFilterDeliveredOrders } },
+                     { $group: { _id: '$orderStatus', count: { $sum: 1 } } }, { $sort: { _id: 1 } }
                 ]);
-                 // TODO: Add driver-specific trip/fuel stats if needed here, applying date filters
+                // TODO: Add driver-specific trip/fuel stats, filtered by driverId and date
                 break;
 
             default:
-                throw new Error('User role does not have access to reports.');
+                reportData.error = 'No report data available for your role.';
         }
 
         res.render('reporting/index', { 
             title: viewTitle,
             reportData, 
-            currentFilters, // Pass applied filters back to view
-            layout: './layouts/dashboard_layout'
+            currentFilters, 
+            layout: './layouts/dashboard_layout' 
         });
 
     } catch (err) {
          console.error(`Error fetching reports for role ${loggedInUser?.role}:`, err);
-         // Pass error message to the view
          res.status(500).render('reporting/index', { 
             title: "Reports Error", 
-            reportData: { type: loggedInUser.role, error: `Failed to load report data: ${err.message}` }, // Pass error in reportData
-            currentFilters: { // Pass potentially received filters or defaults back
-                 startDate: req.query.startDate || new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0], // Example default
+            reportData: { type: loggedInUser.role, error: `Failed to load report data: ${err.message}` },
+            currentFilters: { 
+                 startDate: req.query.startDate || new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0],
                  endDate: req.query.endDate || new Date().toISOString().split('T')[0]
             }, 
             layout: './layouts/dashboard_layout' 
