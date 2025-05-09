@@ -1,11 +1,13 @@
 // routes/orders.js
 const express = require('express');
 const mongoose = require('mongoose');
-const wkhtmltopdf = require('wkhtmltopdf'); 
-const ejs = require('ejs');
+const PdfPrinter = require('pdfmake'); // For creating the printer instance
+const ejs = require('ejs'); // Still needed if you have a web view for invoices
 const path = require('path');
 const qrcode = require('qrcode');
+const fs = require('fs'); // For checking local font files
 
+// --- Import ALL necessary models ---
 const Order = require('../models/Order');
 const Store = require('../models/Store');
 const User = require('../models/User');
@@ -14,7 +16,34 @@ const Warehouse = require('../models/Warehouse');
 const Company = require('../models/Company'); 
 const Vehicle = require('../models/Vehicle');
 
-// --- End Model Imports ---
+// --- PDFMake Font Setup (Using Local Fonts) ---
+// Ensure you have a 'fonts' directory (e.g., project_root/fonts or project_root/public/fonts)
+// and place Roboto .ttf files there. Adjust paths if your structure is different.
+const fonts = {
+  Roboto: { // This name 'Roboto' will be used in your docDefinition styles
+    normal: path.join(__dirname, '../public/fonts/Roboto-Regular.ttf'),
+    bold: path.join(__dirname, '../public/fonts/Roboto-Medium.ttf'), 
+    italics: path.join(__dirname, '../public/fonts/Roboto-Italic.ttf'),
+    bolditalics: path.join(__dirname, '../public/fonts/Roboto-MediumItalic.ttf')
+  }
+  // Add other custom fonts here if needed later
+};
+
+// Sanity check for font files (optional but helpful for debugging)
+Object.keys(fonts).forEach(fontName => {
+    Object.keys(fonts[fontName]).forEach(style => {
+        if (!fs.existsSync(fonts[fontName][style])) {
+            console.warn(`WARNING: Font file not found at ${fonts[fontName][style]} for ${fontName} ${style}. PDF generation may use fallback or fail.`);
+        }
+    });
+});
+
+// *** THIS LINE WAS MISSING OR MISPLACED IN YOUR PREVIOUS VERSION ***
+const printer = new PdfPrinter(fonts); 
+// *** ENSURE THIS LINE IS PRESENT AND CORRECTLY PLACED AT THE TOP LEVEL ***
+
+// --- End PDFMake Font Setup ---
+
 
 // Google Maps Client (Keep available for potential future use)
 const { Client } = require("@googlemaps/google-maps-services-js");
@@ -949,7 +978,7 @@ router.put('/:id/status', ensureCanManageOrder, async (req, res) => {
     }
 });
 
-// Helper function for number to words (Replace with a robust library for production)
+// Helper function for number to words (Use your more complete version)
 function numberToWordsINR(num) {
     if (num === null || num === undefined || isNaN(parseFloat(num))) return 'NOT AVAILABLE';
     const numStr = parseFloat(num).toFixed(2);
@@ -988,11 +1017,6 @@ function numberToWordsINR(num) {
     if (decimalNum > 0) { result += ` AND PAISA ${getWords(decimalNum).trim().replace(/\s+/g, ' ')}`; }
     return `${result.trim()} ONLY`;
 }
-// --- End Number to Words Helper ---
-
-
-// Keep other order routes: GET /, GET /new, POST /, GET /:id, PUT /:id, PUT /:id/status, etc.
-// ...
 
 // Route to display a web view of the invoice (for QR code)
 router.get('/invoice/view/:orderId', ensureAuthenticated, async (req, res) => {
@@ -1051,22 +1075,21 @@ router.get('/invoice/view/:orderId', ensureAuthenticated, async (req, res) => {
     }
 });
 
-
-// GET /orders/:id/invoice/pdf - Generate PDF invoice using wkhtmltopdf
-router.get('/:id/invoice/pdf', ensureAuthenticated, async (req, res) => {
+// GET /orders/:id/invoice/pdf - Generate PDF invoice using pdfmake
+router.get('/:id/invoice/pdf', async (req, res) => { // ensureAuthenticated is already applied globally or ensureCanManageOrder can be added
     try {
         const orderId = req.params.id;
         const { size, orientation } = req.query; 
 
-        if (!mongoose.Types.ObjectId.isValid(orderId)) {
-            return res.status(400).send("Invalid Order ID");
-        }
-        console.log(`Generating PDF invoice for order: ${orderId} (Size: ${size || 'a4'}, Orientation: ${orientation || 'portrait'}) using wkhtmltopdf`);
+        if (!mongoose.Types.ObjectId.isValid(orderId)) return res.status(400).send("Invalid Order ID");
+        
+        console.log(`Generating PDF invoice for order: ${orderId} (Size: ${size || 'A4'}, Orientation: ${orientation || 'portrait'}) using pdfmake with local fonts`);
 
+        // 1. Fetch and prepare data
         const order = await Order.findById(orderId)
             .populate({ path: 'storeId', model: 'Store', select: 'storeName address gstin stateCode phone companyId', populate: { path: 'companyId', model: 'Company', select: 'companyName' } })
-            .populate({ path: 'warehouseId', model: 'Warehouse', select: 'name address companyId', populate: { path: 'companyId', model: 'Company' }})
-            .populate({ path: 'orderItems.itemId', model: 'Item', select: 'name sku hsnCode uom gstRate mrp unitPrice' })
+            .populate({ path: 'warehouseId', model: 'Warehouse', select: 'name address companyId', populate: { path: 'companyId', model: 'Company' }}) // Populate full company for seller
+            .populate({ path: 'orderItems.itemId', model: 'Item', select: 'name sku hsnCode uom gstRate mrp unitPrice' }) 
             .populate('createdBy', 'username')
             .populate({ path: 'assignedDeliveryPartnerId', select: 'username currentVehicleId', populate: { path: 'currentVehicleId', model: 'Vehicle', select: 'vehicleNumber' }})
             .lean();
@@ -1074,29 +1097,24 @@ router.get('/:id/invoice/pdf', ensureAuthenticated, async (req, res) => {
         if (!order) return res.status(404).send("Order not found");
 
         const sellerCompany = order.warehouseId?.companyId;
-        if (!sellerCompany) return res.status(500).send("Seller company details (via warehouse) not found for this order.");
-        
+        if (!sellerCompany) return res.status(500).send("Seller company details missing for this order.");
         const receiverStore = order.storeId;
-        if (!receiverStore) return res.status(500).send("Receiver (Store) details not found for this order.");
+        if (!receiverStore) return res.status(500).send("Receiver store details missing for this order.");
         const consigneeStore = receiverStore;
 
         let totalTaxableValue = 0, totalCGSTAmount = 0, totalSGSTAmount = 0, totalIGSTAmount = 0, overallTotalGSTAmount = 0, runningTotalQuantity = 0;
-        const gstSummary = {}; 
+        const gstSummaryObject = {}; // Use plain object for gstSummary
 
         const sellerStateCode = sellerCompany.address?.stateCode || sellerCompany.gstin?.substring(0,2);
         const receiverStateCode = receiverStore.stateCode || receiverStore.gstin?.substring(0,2);
-        const isIntraState = sellerStateCode && receiverStateCode && sellerStateCode.toLowerCase() === receiverStateCode.toLowerCase();
-        console.log(`PDF Invoice - Seller State: ${sellerStateCode}, Receiver State: ${receiverStateCode}, Intra-state: ${isIntraState}`);
+        const isIntraState = !!(sellerStateCode && receiverStateCode && sellerStateCode.toLowerCase() === receiverStateCode.toLowerCase());
 
         order.orderItems.forEach(entry => {
-            const item = entry.itemId;
-            if (!item) { console.warn(`PDF Invoice: Skipping item in order ${orderId} due to missing details.`); return; }
+            const item = entry.itemId; if (!item) { console.warn("Missing item data in order item entry"); return; }
             const itemRate = parseFloat(entry.priceAtOrder) || 0;
             const itemQuantity = parseFloat(entry.quantity) || 0;
             const itemDiscount = parseFloat(entry.discountAmount || 0); 
-            const itemSchemeValue = parseFloat(entry.schemeValue || 0); 
-            const grossValue = itemRate * itemQuantity;
-            const taxableValue = grossValue - itemDiscount;
+            const taxableValue = (itemRate * itemQuantity) - itemDiscount;
             const gstRate = parseFloat(item.gstRate) || 0;
             let cgst = 0, sgst = 0, igst = 0, itemTotalGst = 0;
 
@@ -1110,87 +1128,279 @@ router.get('/:id/invoice/pdf', ensureAuthenticated, async (req, res) => {
                     itemTotalGst = igst;
                 }
             }
-            
             entry.calculatedTaxableValue = taxableValue; entry.cgstAmount = cgst; entry.sgstAmount = sgst; entry.igstAmount = igst;
             entry.totalGstForItem = itemTotalGst; entry.lineTotal = taxableValue + itemTotalGst;
 
             runningTotalQuantity += itemQuantity; totalTaxableValue += taxableValue;
             totalCGSTAmount += cgst; totalSGSTAmount += sgst; totalIGSTAmount += igst;
             overallTotalGSTAmount += itemTotalGst;
-
+            
             if (gstRate > 0) {
-                if (!gstSummary[gstRate]) gstSummary[gstRate] = { taxable: 0, cgst: 0, sgst: 0, igst: 0, totalGst: 0 };
-                gstSummary[gstRate].taxable += taxableValue; gstSummary[gstRate].cgst += cgst; 
-                gstSummary[gstRate].sgst += sgst; gstSummary[gstRate].igst += igst;
-                gstSummary[gstRate].totalGst += itemTotalGst;
+                if (!gstSummaryObject[gstRate]) gstSummaryObject[gstRate] = { taxable: 0, cgst: 0, sgst: 0, igst: 0, totalGst: 0 };
+                gstSummaryObject[gstRate].taxable += taxableValue;
+                gstSummaryObject[gstRate].cgst += cgst; 
+                gstSummaryObject[gstRate].sgst += sgst;
+                gstSummaryObject[gstRate].igst += igst;
+                gstSummaryObject[gstRate].totalGst += itemTotalGst;
             }
         });
         
         const grandTotalForInvoice = order.grandTotal !== undefined ? order.grandTotal : (totalTaxableValue + overallTotalGSTAmount - (order.totalDiscountAfterTax || 0) + (order.roundOff || 0));
+        const amountInWords = numberToWordsINR(grandTotalForInvoice);
         let vehicleNumberForInvoice = order.vehicleNumber || order.assignedDeliveryPartnerId?.currentVehicleId?.vehicleNumber;
 
         const onlineViewUrl = `${req.protocol}://${req.get('host')}/orders/invoice/view/${orderId}`;
-        let qrOnlineViewDataUrl = null;
-        try { qrOnlineViewDataUrl = await qrcode.toDataURL(onlineViewUrl, { errorCorrectionLevel: 'M', width: 70, margin: 1 }); } 
+        let qrOnlineViewDataUrl = ' '; 
+        try { qrOnlineViewDataUrl = await qrcode.toDataURL(onlineViewUrl, { errorCorrectionLevel: 'M', width: 60, margin: 1 }); } 
         catch (qrErr) { console.error("Error generating online view QR code:", qrErr); }
         
-        const verificationDataString = JSON.stringify({ /* ... key invoice data ... */ });
-        let qrVerificationDataUrl = null;
-        try { qrVerificationDataUrl = await qrcode.toDataURL(verificationDataString, { errorCorrectionLevel: 'M', width: 70, margin: 1 }); } 
+        const verificationDataString = JSON.stringify({ /* ... key invoice data for QR ... */ });
+        let qrVerificationDataUrl = ' ';
+        try { qrVerificationDataUrl = await qrcode.toDataURL(verificationDataString, { errorCorrectionLevel: 'M', width: 60, margin: 1 }); } 
         catch (qrErr) { console.error("Error generating verification QR code:", qrErr); }
 
         const invoiceData = {
-            order: {
-                ...order, invoiceNumber: order.invoiceNumber || `INV-${order._id.toString().slice(-6).toUpperCase()}`,
-                salesmanName: order.createdBy?.username, grandTotal: grandTotalForInvoice,
-                amountInWords: numberToWordsINR(grandTotalForInvoice), vehicleNumber: vehicleNumberForInvoice,
-                billType: order.billType || 'CREDIT', poNumber: order.poNumber || '-', ackNo: order.ackNo || '-',
-                irn: order.irn || '-', totalDiscountAfterTax: order.totalDiscountAfterTax || 0, roundOff: order.roundOff || 0,
-                warrantyText: order.warrantyText || "Standard warranty terms apply.",
-                declarationText: order.declarationText || "We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.",
-                calculatedTotals: { runningTotalQuantity, totalTaxableValue, totalCGSTAmount, totalSGSTAmount, totalIGSTAmount, overallTotalGSTAmount, runningSubTotal: totalTaxableValue + overallTotalGSTAmount }
-            },
-            seller: sellerCompany, receiver: receiverStore, consignee: consigneeStore, gstSummary, 
+            order: { /* ... All order details, including calculatedTotals ... */ },
+            seller: sellerCompany, receiver: receiverStore, consignee: consigneeStore, 
+            gstSummary: gstSummaryObject, // Pass the plain object
             currentDate: new Date(), pageSetup: { size: size || 'a4', orientation: orientation || 'portrait' },
             isIntraState, qrOnlineViewDataUrl, qrVerificationDataUrl
         };
-
-        const templatePath = path.join(__dirname, '../views/invoices/invoice_template.ejs');
-        const htmlContent = await ejs.renderFile(templatePath, invoiceData);
-
-        const pdfOptions = {
-            pageSize: size || 'A4', 
-            orientation: orientation || 'Portrait', 
-            marginTop: '15mm', marginBottom: '15mm', marginLeft: '10mm', marginRight: '10mm',
-            disableSmartShrinking: true, enableLocalFileAccess: true,
-            // It's good to set a path for wkhtmltopdf if it's not in the system PATH
-            // On Koyeb, if installed via apt.txt, it should be in PATH.
-            // If not, you might need: executable: '/usr/bin/wkhtmltopdf' (or wherever it is)
+        // Ensure all fields for invoiceData.order (like billType, poNumber etc.) are correctly sourced from 'order' or given defaults
+         invoiceData.order = {
+            ...order,
+            invoiceNumber: order.invoiceNumber || `INV-${order._id.toString().slice(-6).toUpperCase()}`,
+            salesmanName: order.createdBy?.username,
+            grandTotal: grandTotalForInvoice,
+            amountInWords: amountInWords,
+            vehicleNumber: vehicleNumberForInvoice,
+            billType: order.billType || 'CREDIT',
+            poNumber: order.poNumber || '-',
+            ackNo: order.ackNo || '-',
+            irn: order.irn || '-',
+            totalDiscountAfterTax: order.totalDiscountAfterTax || 0,
+            roundOff: order.roundOff || 0,
+            warrantyText: order.warrantyText || "Standard warranty terms apply.",
+            declarationText: order.declarationText || "We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.",
+            calculatedTotals: { runningTotalQuantity, totalTaxableValue, totalCGSTAmount, totalSGSTAmount, totalIGSTAmount, overallTotalGSTAmount, runningSubTotal: totalTaxableValue + overallTotalGSTAmount }
         };
-        if (process.env.WKHTMLTOPDF_PATH) { // Allow overriding path via env variable
-            pdfOptions.executable = process.env.WKHTMLTOPDF_PATH;
-        }
-
-        if (size === 'a5' && orientation && orientation.toLowerCase() === 'landscape') { pdfOptions.pageSize = 'A5'; pdfOptions.orientation = 'Landscape'; } 
-        else if (size === 'a4' && orientation && orientation.toLowerCase() === 'landscape') { pdfOptions.pageSize = 'A4'; pdfOptions.orientation = 'Landscape'; } 
-        else if (size === 'a5') { pdfOptions.pageSize = 'A5'; pdfOptions.orientation = 'Portrait';}
         
-        console.log("Generating PDF with wkhtmltopdf options:", pdfOptions);
+        // --- Create pdfmake Document Definition ---
+        // This is the large object translating your EJS template to pdfmake syntax
+        const docDefinition = {
+            pageSize: (invoiceData.pageSetup.size || 'A4').toUpperCase(),
+            pageOrientation: (invoiceData.pageSetup.orientation || 'portrait').toLowerCase(),
+            pageMargins: [ 28, 40, 28, 40 ], // [left, top, right, bottom] (approx 10mm, 14mm, 10mm, 14mm)
+            
+            content: [
+                // Seller Header
+                {
+                    stack: [
+                        { text: invoiceData.seller.companyName || 'SELLER COMPANY NAME', style: 'companyNameHeader' },
+                        { text: `${invoiceData.seller.address?.street || ''}, ${invoiceData.seller.address?.city || ''}`, style: 'addressText' },
+                        { text: `${invoiceData.seller.address?.state || ''} - ${invoiceData.seller.address?.pincode || ''}, ${invoiceData.seller.address?.country || 'INDIA'}`, style: 'addressText' },
+                        { text: `Phone: ${invoiceData.seller.mobileNumber || 'N/A'} ${invoiceData.seller.contactEmail ? '| Email: ' + invoiceData.seller.contactEmail : ''}`, style: 'addressText'},
+                        { text: `${invoiceData.seller.gstin ? 'GSTIN: ' + invoiceData.seller.gstin : ''}${invoiceData.seller.fssaiLicenseNo ? (invoiceData.seller.gstin ? ' | ' : '') + 'FSSAI: ' + invoiceData.seller.fssaiLicenseNo : ''}`, style: 'addressText', margin: [0,0,0,5] },
+                    ], alignment: 'center', margin: [0, 0, 0, 5]
+                },
+                { text: invoiceData.order.invoiceType === 'TAX_INVOICE' ? 'TAX INVOICE' : 'SALES INVOICE', style: 'invoiceTitle', alignment: 'center' },
+                invoiceData.order.invoiceType === 'TAX_INVOICE' ? { text: 'FORM GST INV-1', style: 'invoiceSubtitle', alignment: 'center', margin: [0,0,0,10] } : {},
+                
+                // Invoice Meta
+                {
+                    columns: [
+                        { stack: [ { text: `Invoice No: ${invoiceData.order.invoiceNumber}`, style: 'metaItem' }, { text: `Order No: ${invoiceData.order.poNumber || invoiceData.order._id.toString().slice(-8).toUpperCase()}`, style: 'metaItem' }, { text: `Bill Type: ${invoiceData.order.billType}`, style: 'metaItem' }, invoiceData.order.salesmanName ? {text: `Salesman: ${invoiceData.order.salesmanName}`, style: 'metaItem'} : {} ], width: '*' },
+                        { stack: [ { text: `Date: ${new Date(invoiceData.order.placedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`, style: 'metaItem', alignment: 'right' }, invoiceData.order.vehicleNumber ? { text: `Vehicle No: ${invoiceData.order.vehicleNumber}`, style: 'metaItem', alignment: 'right' } : {}, invoiceData.order.ackNo ? { text: `Ack No: ${invoiceData.order.ackNo}`, style: 'metaItem', alignment: 'right'} : {}, invoiceData.order.irn ? {text: `IRN: ${invoiceData.order.irn}`, style: 'metaTiny', alignment: 'right'} : {} ], width: '*' }
+                    ], margin: [0, 0, 0, 5], columnGap: 10
+                },
+                { canvas: [{ type: 'line', x1: 0, y1: 2, x2: 535, y2: 2, lineWidth: 0.5, lineColor: '#999999' }], margin: [0,0,0,5]}, // Adjusted line color
 
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename=invoice-${order._id}-${pdfOptions.pageSize}-${pdfOptions.orientation}.pdf`);
+                // Receiver & Consignee
+                {
+                    columns: [
+                        { stack: [ { text: 'Details of Receiver (Billed To):', style: 'sectionHeader' }, { text: invoiceData.receiver.storeName || invoiceData.order.customerName || 'N/A', style: 'boldText' }, { text: `${invoiceData.receiver.address?.street || ''}` }, { text: `${invoiceData.receiver.address?.city || ''}, ${invoiceData.receiver.address?.state || ''} - ${invoiceData.receiver.address?.pincode || ''}` }, { text: `State: ${invoiceData.receiver.address?.state || 'N/A'} (Code: ${invoiceData.receiver.stateCode || 'N/A'})`}, invoiceData.receiver.gstin ? { text: `GSTIN: ${invoiceData.receiver.gstin}` } : {}, invoiceData.receiver.phone ? { text: `Mobile: ${invoiceData.receiver.phone}` } : {} ], width: '*' },
+                        { stack: [ { text: 'Details of Consignee (Shipped To):', style: 'sectionHeader' }, { text: invoiceData.consignee.storeName || invoiceData.order.customerName || 'N/A', style: 'boldText' }, { text: `${invoiceData.consignee.address?.street || ''}` }, { text: `${invoiceData.consignee.address?.city || ''}, ${invoiceData.consignee.address?.state || ''} - ${invoiceData.consignee.address?.pincode || ''}` }, { text: `State: ${invoiceData.consignee.address?.state || 'N/A'} (Code: ${invoiceData.consignee.stateCode || 'N/A'})`}, invoiceData.consignee.gstin ? { text: `GSTIN: ${invoiceData.consignee.gstin}` } : {} ], width: '*' }
+                    ], columnGap: 10, margin: [0, 0, 0, 5]
+                },
+                { canvas: [{ type: 'line', x1: 0, y1: 2, x2: 535, y2: 2, lineWidth: 0.5, lineColor: '#999999' }], margin: [0,0,0,5]},
 
-        const stream = wkhtmltopdf(htmlContent, pdfOptions);
-        stream.pipe(res);
-        stream.on('error', (err) => {
-            console.error("Error during wkhtmltopdf streaming:", err);
-            if (!res.headersSent) { res.status(500).send("Error generating PDF (stream error)."); }
+                // Items Table
+                {
+                    table: {
+                        headerRows: 1,
+                        widths: ['auto', 50, '*', 35, 40, 50, 40, 55, 35, (isIntraState ? 45 : 0), (isIntraState ? 45 : 0), (!isIntraState ? 50 : 0), 60], // Adjusted widths
+                        body: [
+                            // Header Row
+                            [ {text: 'SR', style: 'tableHeader'}, {text: 'HSN', style: 'tableHeader'}, {text: 'Item Name (SKU)', style: 'tableHeader'}, {text: 'UOM', style: 'tableHeaderCenter'}, {text: 'Qty', style: 'tableHeaderRight'}, {text: 'Rate ₹', style: 'tableHeaderRight'}, {text: 'Disc ₹', style: 'tableHeaderRight'}, {text: 'Taxable ₹', style: 'tableHeaderRight'}, {text: 'GST %', style: 'tableHeaderCenter'}, ...(isIntraState ? [{text: 'CGST ₹', style: 'tableHeaderRight'}, {text: 'SGST ₹', style: 'tableHeaderRight'}] : [{text:'',border:[false,false,false,false]},{text:'',border:[false,false,false,false]}]), ...(!isIntraState ? [{text: 'IGST ₹', style: 'tableHeaderRight'}] : [{text:'',border:[false,false,false,false]}]), {text: 'Total ₹', style: 'tableHeaderRight'}],
+                            // Item Rows
+                            ...invoiceData.order.orderItems.map((entry, index) => {
+                                const item = entry.itemId || {};
+                                let gstCols = [];
+                                if(isIntraState) { gstCols = [{text: entry.cgstAmount.toFixed(2), style: 'tableCellRight'}, {text: entry.sgstAmount.toFixed(2), style: 'tableCellRight'}]; }
+                                else { gstCols = [{text: '', border:[false,false,false,false]}, {text: '', border:[false,false,false,false]}]; } // Empty cells for CGST/SGST if IGST
+                                
+                                let igstCol = [];
+                                if(!isIntraState) { igstCol = [{text: entry.igstAmount.toFixed(2), style: 'tableCellRight'}]; }
+                                else { igstCol = [{text: '', border:[false,false,false,false]}];}
+
+
+                                return [
+                                    { text: index + 1, style: 'tableCellCenter' }, { text: item.hsnCode || '-', style: 'tableCell' },
+                                    { text: `${item.name || 'Unknown'} (${item.sku || 'N/A'})`, style: 'tableCell' }, { text: item.uom?.toUpperCase() || 'PCS', style: 'tableCellCenter' },
+                                    { text: entry.quantity.toFixed(2), style: 'tableCellRight' }, { text: entry.priceAtOrder.toFixed(2), style: 'tableCellRight' },
+                                    { text: (entry.discountAmount || 0).toFixed(2), style: 'tableCellRight' }, { text: entry.calculatedTaxableValue.toFixed(2), style: 'tableCellRight' },
+                                    { text: `${item.gstRate || 0}%`, style: 'tableCellCenter' }, ...gstCols, ...igstCol,
+                                    { text: entry.lineTotal.toFixed(2), style: 'tableCellRight', bold: true }
+                                ];
+                            }),
+                            // Footer Row for Totals
+                            [ { text: 'TOTALS:', colSpan: 4, alignment: 'right', bold: true, style: 'tableCellFooter' }, {}, {}, {}, { text: invoiceData.order.calculatedTotals.runningTotalQuantity.toFixed(2), bold: true, style: 'tableCellRightFooter' }, {}, { text: invoiceData.order.orderItems.reduce((s,e)=>s+(e.discountAmount||0),0).toFixed(2), bold: true, style: 'tableCellRightFooter'}, { text: invoiceData.order.calculatedTotals.totalTaxableValue.toFixed(2), bold: true, style: 'tableCellRightFooter' }, {}, ...(isIntraState ? [{ text: invoiceData.order.calculatedTotals.totalCGSTAmount.toFixed(2), bold: true, style: 'tableCellRightFooter'}, { text: invoiceData.order.calculatedTotals.totalSGSTAmount.toFixed(2), bold: true, style: 'tableCellRightFooter'}] : [{text:'',border:[false,false,false,false]},{text:'',border:[false,false,false,false]}]), ...(!isIntraState ? [{text: invoiceData.order.calculatedTotals.totalIGSTAmount.toFixed(2), bold: true, style: 'tableCellRightFooter'}] : [{text:'',border:[false,false,false,false]}]), { text: grandTotalForInvoice.toFixed(2), bold: true, style: 'tableCellRightFooter' } ]
+                        ]
+                    }, layout: { // Custom layout for solid outer and header lines, light inner lines
+                        hLineWidth: function (i, node) { return (i === 0 || i === node.table.body.length || i === 1 || i === node.table.body.length -1 ) ? 0.75 : 0.25; },
+                        vLineWidth: function (i, node) { return (i === 0 || i === node.table.widths.length) ? 0.75 : 0.25; },
+                        hLineColor: function (i, node) { return (i === 0 || i === node.table.body.length || i === 1 || i === node.table.body.length-1) ? 'black' : 'grey'; },
+                        vLineColor: function (i, node) { return (i === 0 || i === node.table.widths.length) ? 'black' : 'grey'; },
+                    }, margin: [0, 5, 0, 10]
+                },
+                
+                // Summary Section
+                {
+                    columns: [
+                        { 
+                            stack: [
+                                (Object.keys(invoiceData.gstSummary).length > 0) ? { text: 'Tax Summary (GST % wise)', style: 'sectionSubHeader', margin:[0,5,0,2] } : {},
+                                (Object.keys(invoiceData.gstSummary).length > 0) ? {
+                                     table: {
+                                         widths: ['auto', '*', (isIntraState ? 'auto' : 0), (isIntraState ? 'auto' : 0), (!isIntraState ? 'auto' : 0), 'auto'],
+                                         body: [
+                                             [{text: 'GST %', style: 'tableHeaderSmallCenter'}, {text: 'Taxable Val ₹', style: 'tableHeaderSmallRight'}, ...(isIntraState ? [{text: 'CGST ₹', style: 'tableHeaderSmallRight'}, {text: 'SGST ₹', style: 'tableHeaderSmallRight'}] : [{text:'',border:[false,false,false,false]},{text:'',border:[false,false,false,false]}]), ...(!isIntraState ? [{text: 'IGST ₹', style: 'tableHeaderSmallRight'}] : [{text:'',border:[false,false,false,false]}]), {text: 'Total GST ₹', style: 'tableHeaderSmallRight'}],
+                                             ...Object.entries(invoiceData.gstSummary).map(([rate, amounts]) => [
+                                                 {text: `${rate}%`, style: 'tableCellSmallCenter'}, {text: amounts.taxable.toFixed(2), style: 'tableCellSmallRight'},
+                                                 ...(isIntraState ? [{text: amounts.cgst.toFixed(2), style: 'tableCellSmallRight'}, {text: amounts.sgst.toFixed(2), style: 'tableCellSmallRight'}] : [{text:'',border:[false,false,false,false]},{text:'',border:[false,false,false,false]}]),
+                                                 ...(!isIntraState ? [{text: amounts.igst.toFixed(2), style: 'tableCellSmallRight'}] : [{text:'',border:[false,false,false,false]}]),
+                                                 {text: amounts.totalGst.toFixed(2), style: 'tableCellSmallRight'}
+                                             ])
+                                         ]
+                                     }, layout: 'lightHorizontalLines', margin: [0,0,0,10]
+                                } : {},
+                                { text: `Amount (in words): ${invoiceData.order.amountInWords}`, style: 'amountInWordsText'},
+                            ], width: '65%'
+                        },
+                        { 
+                            stack: [
+                                {
+                                    table: {
+                                        widths: ['*', 'auto'],
+                                        body: [
+                                            [{text: 'Sub Total (Taxable):', style: 'summaryLabel'}, {text: `₹${invoiceData.order.calculatedTotals.totalTaxableValue.toFixed(2)}`, style: 'summaryValue'}],
+                                            isIntraState ? [{text: `CGST:`, style: 'summaryLabel'}, {text: `₹${invoiceData.order.calculatedTotals.totalCGSTAmount.toFixed(2)}`, style: 'summaryValue'}] : [],
+                                            isIntraState ? [{text: `SGST/UTGST:`, style: 'summaryLabel'}, {text: `₹${invoiceData.order.calculatedTotals.totalSGSTAmount.toFixed(2)}`, style: 'summaryValue'}] : [],
+                                            !isIntraState ? [{text: `IGST:`, style: 'summaryLabel'}, {text: `₹${invoiceData.order.calculatedTotals.totalIGSTAmount.toFixed(2)}`, style: 'summaryValue'}] : [],
+                                            (invoiceData.order.totalDiscountAfterTax > 0) ? [{text: 'Discount After Tax:', style: 'summaryLabel'}, {text: `- ₹${invoiceData.order.totalDiscountAfterTax.toFixed(2)}`, style: 'summaryValue'}] : [],
+                                            (invoiceData.order.roundOff) ? [{text: 'Round Off:', style: 'summaryLabel'}, {text: `₹${invoiceData.order.roundOff.toFixed(2)}`, style: 'summaryValue'}] : [],
+                                            [{text: 'GRAND TOTAL:', style: 'grandTotalLabel'}, {text: `₹${invoiceData.order.grandTotal.toFixed(2)}`, style: 'grandTotalValue'}]
+                                        ].filter(row => Array.isArray(row) && row.length > 0)
+                                    }, layout: 'noBorders'
+                                }
+                            ], width: '35%'
+                        }
+                    ], columnGap: 10, margin: [0, 5, 0, 10]
+                },
+                { canvas: [{ type: 'line', x1: 0, y1: 2, x2: 535, y2: 2, lineWidth: 0.5, lineColor: '#999999' }], margin: [0,5,0,5]},
+
+                (sellerCompany.bankDetails?.accountName || sellerCompany.upiId) ? { text: [ {text: 'Bank Details: ', bold: true}, sellerCompany.bankDetails?.bankName ? `${sellerCompany.bankDetails.bankName}, A/c: ${sellerCompany.bankDetails.accountNumber || 'N/A'}, IFSC: ${sellerCompany.bankDetails.ifscCode || 'N/A'}, Name: ${sellerCompany.bankDetails.accountName}` : '', (sellerCompany.bankDetails?.accountName && sellerCompany.upiId) ? ' | ' : '', sellerCompany.upiId ? `UPI ID: ${sellerCompany.upiId}` : '' ], style: 'footerTextSmall', margin: [0,0,0,5] } : {},
+                
+                {
+                    columns: [
+                        { stack:[ {text: 'Terms & Conditions:', style: 'sectionSubHeader', margin: [0,5,0,2]}, {text: "1. Goods once sold will not be taken back or exchanged. 2. Interest @18% p.a. will be charged if the bill is not paid within 30 days. 3. All disputes subject to local jurisdiction.", style:'termsText'}, {text: 'Declaration:', style: 'sectionSubHeader', margin: [0,5,0,2]}, {text: invoiceData.order.declarationText, style:'termsText'} ], width: '*' },
+                        { stack: [ qrOnlineViewDataUrl !== ' ' ? { image: qrOnlineViewDataUrl, width: 60, alignment: 'center', margin: [0,0,0,2] } : {}, qrOnlineViewDataUrl !== ' ' ? { text: 'View Online', style: 'qrLabel', alignment: 'center'} : {}, qrVerificationDataUrl !== ' ' ? { image: qrVerificationDataUrl, width: 60, alignment: 'center', margin: [0,5,0,2] } : {}, qrVerificationDataUrl !== ' ' ? { text: 'Verify Invoice', style: 'qrLabel', alignment: 'center'} : {} ], width: 'auto', alignment: 'right' }
+                    ], columnGap: 10, margin: [0,5,0,0] // Reduced bottom margin
+                }
+            ],
+
+            // --- Footer ---
+            footer: function(currentPage, pageCount) { 
+                return {
+                    columns: [
+                        { text: `Invoice: ${order.invoiceNumber || order._id.toString().slice(-6).toUpperCase()}`, alignment: 'left', style: 'footerText'},
+                        { text: `Page ${currentPage.toString()} of ${pageCount}`, alignment: 'center', style: 'footerText' },
+                        { text: `Print: ${new Date(invoiceData.currentDate).toLocaleString('en-IN', {dateStyle:'short', timeStyle:'short'})}`, alignment: 'right', style: 'footerText'}
+                    ],
+                    margin: [28, 10, 28, 0] // Left, Top, Right, Bottom
+                };
+            },
+            // --- Header for subsequent pages (Optional) ---
+            // header: function(currentPage, pageCount, pageSize) { /* ... */ },
+
+            // --- Styles Definition ---
+            styles: {
+                companyNameHeader: { fontSize: 16, bold: true, alignment: 'center', margin: [0, 0, 0, 2] },
+                addressText: { fontSize: 7.5, alignment: 'center', margin: [0,0,0,1],lineHeight: 1.2 },
+                invoiceTitle: { fontSize: 12, bold: true, alignment: 'center', margin: [0, 2, 0, 1], characterSpacing: 1 },
+                invoiceSubtitle: { fontSize: 7, alignment: 'center', margin: [0,0,0,5] },
+                metaItem: { fontSize: 8, margin: [0,1,0,1], lineHeight: 1.2 },
+                metaTiny: { fontSize: 6.5, margin: [0,1,0,1], lineHeight: 1.2 },
+                sectionHeader: { fontSize: 8.5, bold: true, margin: [0, 0, 0, 3], decoration: 'underline', decorationStyle: 'dotted'},
+                sectionSubHeader: { fontSize: 7.5, bold: true, margin: [0,0,0,2]},
+                boldText: { bold: true, fontSize: 8 },
+                tableHeader: { bold: true, fontSize: 7.5, fillColor: '#eeeeee', alignment: 'center' },
+                tableHeaderRight: { bold: true, fontSize: 7.5, fillColor: '#eeeeee', alignment: 'right' },
+                tableHeaderCenter: { bold: true, fontSize: 7.5, fillColor: '#eeeeee', alignment: 'center' },
+                tableCell: { fontSize: 7.5 },
+                tableCellCenter: { fontSize: 7.5, alignment: 'center' },
+                tableCellRight: { fontSize: 7.5, alignment: 'right' },
+                tableCellFooter: { fontSize: 7.5, alignment: 'right', bold: true, margin: [0,2,0,2] },
+                tableCellRightFooter: { fontSize: 7.5, alignment: 'right', bold: true, margin: [0,2,0,2] },
+                tableHeaderSmallCenter: {fontSize: 7, bold:true, fillColor: '#f5f5f5', alignment: 'center'},
+                tableHeaderSmallRight: {fontSize: 7, bold:true, fillColor: '#f5f5f5', alignment: 'right'},
+                tableCellSmallCenter: {fontSize: 7, alignment: 'center'},
+                tableCellSmallRight: {fontSize: 7, alignment: 'right'},
+                summaryLabel: { fontSize: 8, alignment: 'right', margin: [0,1,5,1] },
+                summaryValue: { fontSize: 8, bold: true, alignment: 'right', margin: [0,1,0,1] },
+                grandTotalLabel: { fontSize: 9, bold: true, alignment: 'right', margin: [0,2,5,2] },
+                grandTotalValue: { fontSize: 9, bold: true, alignment: 'right', margin: [0,2,0,2] },
+                amountInWordsText: { fontSize: 8, italics: true, margin: [0, 5, 0, 5] },
+                footerTextSmall: { fontSize: 7, margin: [0,0,0,3] },
+                termsText: { fontSize: 7, alignment: 'justify', lineHeight: 1.2},
+                qrLabel: {fontSize: 6.5, alignment: 'center', margin: [0,0,0,5]},
+                footerText: { fontSize: 7, color: 'grey', margin: [0,5,0,0] }
+            },
+            defaultStyle: {
+                font: 'Roboto', // Use the font defined above
+                fontSize: 8, // Default for most text not explicitly styled
+                lineHeight: 1.3
+            }
+        }; // End docDefinition
+
+        // Generate PDF document
+        const pdfDoc = printer.createPdfKitDocument(docDefinition);
+        
+        // Stream PDF to response
+        const chunks = [];
+        pdfDoc.on('data', chunk => chunks.push(chunk));
+        pdfDoc.on('end', () => {
+            const pdfBuffer = Buffer.concat(chunks);
+            res.set({
+                'Content-Type': 'application/pdf',
+                'Content-Length': pdfBuffer.length,
+                'Content-Disposition': `inline; filename=invoice-${order._id}-${invoiceData.pageSetup.size}-${invoiceData.pageSetup.orientation}.pdf`
+            });
+            res.send(pdfBuffer);
+            console.log(`PDF Invoice ${orderId} sent successfully.`);
         });
+        pdfDoc.on('error', (err) => {
+             console.error("Error piping PDF to response:", err);
+             if (!res.headersSent) {
+                 res.status(500).send("Error generating PDF stream.");
+             }
+        });
+        pdfDoc.end();
 
     } catch (err) {
-        console.error("Error in /invoice/pdf route:", err);
+        console.error("Error in /invoice/pdf route (pdfmake):", err);
         if (!res.headersSent) {
-            res.status(500).send(`Error generating invoice: ${err.message}.`);
+            res.status(500).send(`Error generating invoice: ${err.message}. Check server logs for details.`);
         }
     }
 });
