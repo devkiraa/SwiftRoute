@@ -4,20 +4,17 @@
     <div class="flex items-center justify-between">
         <h2 class="text-lg font-semibold text-gray-800"><%= locals.pageTitle %></h2>
         <div class="flex items-center">
-            <%# Message display from query parameters %>
             <% if (typeof error_msg === 'string' && error_msg && error_msg.trim() !== '') { %>
-                <div class="mr-4 p-2 text-xs bg-red-100 border border-red-400 text-red-700 rounded-md">
-                    <%= decodeURIComponent(error_msg.replace(/\+/g, ' ')) %>
-                </div>
+                <div class="mr-4 p-2 text-xs bg-red-100 border border-red-400 text-red-700 rounded-md animate-pulse"><%= decodeURIComponent(error_msg.replace(/\+/g, ' ')) %></div>
+                <script>setTimeout(() => { document.querySelector('.bg-red-100.animate-pulse')?.remove(); }, 5000);</script>
             <% } %>
             <% if (typeof success_msg === 'string' && success_msg && success_msg.trim() !== '') { %>
-                <div class="mr-4 p-2 text-xs bg-green-100 border border-green-400 text-green-700 rounded-md">
-                    <%= decodeURIComponent(success_msg.replace(/\+/g, ' ')) %>
-                </div>
+                <div class="mr-4 p-2 text-xs bg-green-100 border border-green-400 text-green-700 rounded-md animate-pulse"><%= decodeURIComponent(success_msg.replace(/\+/g, ' ')) %></div>
+                <script>setTimeout(() => { document.querySelector('.bg-green-100.animate-pulse')?.remove(); }, 3000);</script>
             <% } %>
-            <a href="/warehouses/new" class="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1.5" viewBox="0 0 20 20" fill="currentColor">
-                    <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v4h4a1 1 0 110 2h-4v4a1 1 0 11-2 0v-4H5a1 1 0 110-2h4V4a1 1 0 011-1z" clip-rule="evenodd" />
+            <a href="/warehouses/new" class="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
                 </svg>
                 Add New Warehouse
             </a>
@@ -26,68 +23,74 @@
 </header>
 
 <section class="px-6 py-6 flex-1 overflow-y-auto">
-    <div class="bg-white border rounded-lg shadow-sm">
-        <div class="px-4 sm:px-6 py-3 border-b">
-            <h3 class="text-base font-semibold text-gray-700">All Warehouses</h3>
-            <%# Add Filters/Search Bar here later if needed %>
-        </div>
-        <div class="overflow-x-auto">
-            <table class="min-w-full w-full text-left">
-                <thead class="bg-gray-50 border-b text-xs uppercase text-gray-500 tracking-wider">
-                    <tr>
-                        <th scope="col" class="px-4 sm:px-6 py-3 font-medium">Warehouse Name</th>
-                        <th scope="col" class="px-4 sm:px-6 py-3 font-medium">Address</th>
-                        <th scope="col" class="px-4 sm:px-6 py-3 font-medium">Phone</th>
-                        <th scope="col" class="px-4 sm:px-6 py-3 font-medium">Email</th>
-                        <% if (locals.loggedInUser && locals.loggedInUser.role === 'admin') { %>
-                            <th scope="col" class="px-4 sm:px-6 py-3 font-medium">Company</th>
+    <% if (typeof warehouses !== 'undefined' && warehouses.length > 0) { %>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <% warehouses.forEach(warehouse => { %>
+                <div class="bg-white border rounded-lg shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col">
+                    <div class="p-5 flex-grow">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-2 truncate" title="<%= warehouse.name %>">
+                            <%= warehouse.name %>
+                        </h3>
+                        <% if (locals.loggedInUser.role === 'admin' && warehouse.companyId) { %>
+                            <p class="text-xs text-gray-500 mb-2">Company: <%= warehouse.companyId.companyName || 'N/A' %></p>
                         <% } %>
-                        <th scope="col" class="px-4 sm:px-6 py-3 font-medium text-center">Actions</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-200 text-sm text-gray-700">
-                    <% if (typeof warehouses !== 'undefined' && warehouses.length > 0) { %>
-                        <% warehouses.forEach(warehouse => { %>
-                            <tr class="hover:bg-gray-50 transition-colors duration-150">
-                                <td class="px-4 sm:px-6 py-3 font-medium text-gray-900 whitespace-nowrap"><%= warehouse.name %></td>
-                                <td class="px-4 sm:px-6 py-3 text-xs">
-                                    <% if (warehouse.address) { %>
-                                        <%= warehouse.address.street || '' %><br>
-                                        <%= warehouse.address.city || '' %>, <%= warehouse.address.state || '' %> <%= warehouse.address.pincode || '' %>
-                                    <% } else { %>
-                                        N/A
-                                    <% } %>
-                                </td>
-                                <td class="px-4 sm:px-6 py-3 whitespace-nowrap"><%= warehouse.phone || '-' %></td>
-                                <td class="px-4 sm:px-6 py-3 whitespace-nowrap"><%= warehouse.email || '-' %></td>
-                                <% if (locals.loggedInUser && locals.loggedInUser.role === 'admin') { %>
-                                    <td class="px-4 sm:px-6 py-3 whitespace-nowrap"><%= warehouse.companyId?.companyName || 'N/A' %></td>
-                                <% } %>
-                                <td class="px-4 sm:px-6 py-3 whitespace-nowrap text-center space-x-2">
-                                    <a href="/warehouses/<%= warehouse._id %>/edit" 
-                                       class="text-indigo-600 hover:text-indigo-900 hover:underline text-xs font-medium"
-                                       title="Edit <%= warehouse.name %>">Edit</a>
-                                    <form action="/warehouses/<%= warehouse._id %>?_method=DELETE" method="POST" class="inline" 
-                                          onsubmit="return confirm('Are you sure you want to delete warehouse: <%= warehouse.name.replace(/'/g, '\\\'') %>? This cannot be undone and will fail if items or orders are assigned to it.');">
-                                        <button type="submit" 
-                                                class="text-red-600 hover:text-red-900 hover:underline text-xs font-medium p-0 border-none bg-transparent cursor-pointer"
-                                                title="Delete <%= warehouse.name %>">Delete</button>
-                                    </form>
-                                </td>
-                            </tr>
-                        <% }); %>
-                    <% } else { %>
-                        <% const colSpan = (locals.loggedInUser && locals.loggedInUser.role === 'admin') ? 6 : 5; %>
-                        <tr>
-                            <td colspan="<%= colSpan %>" class="text-center py-10 text-gray-500">
-                                No warehouses found. 
-                                <a href="/warehouses/new" class="text-blue-600 hover:underline">Add a new warehouse?</a>
-                            </td>
-                        </tr>
-                    <% } %>
-                </tbody>
-            </table>
+                        
+                        <div class="text-xs text-gray-600 space-y-1 mb-3">
+                            <% if (warehouse.address && (warehouse.address.street || warehouse.address.city)) { %>
+                                <p>
+                                    <strong class="font-medium text-gray-700">Address:</strong>
+                                    <%= warehouse.address.street || '' %>
+                                    <%= warehouse.address.street && warehouse.address.city ? ', ' : '' %>
+                                    <%= warehouse.address.city || '' %>
+                                    <%= (warehouse.address.city || warehouse.address.street) && warehouse.address.state ? ', ' : '' %>
+                                    <%= warehouse.address.state || '' %>
+                                    <%= warehouse.address.pincode ? ` - ${warehouse.address.pincode}` : '' %>
+                                </p>
+                            <% } %>
+                            <% if (warehouse.phone) { %>
+                                <p><strong class="font-medium text-gray-700">Phone:</strong> <%= warehouse.phone %></p>
+                            <% } %>
+                            <% if (warehouse.email) { %>
+                                <p><strong class="font-medium text-gray-700">Email:</strong> <a href="mailto:<%= warehouse.email %>" class="text-blue-600 hover:underline"><%= warehouse.email %></a></p>
+                            <% } %>
+                        </div>
+
+                        <% if (warehouse.location && warehouse.location.coordinates && warehouse.location.coordinates.length === 2) { %>
+                            <a href="https://maps.google.com/?q=<%= warehouse.location.coordinates[1] %>,<%= warehouse.location.coordinates[0] %>" 
+                               target="_blank" rel="noopener noreferrer"
+                               class="inline-flex items-center text-xs text-blue-600 hover:text-blue-800 hover:underline mb-3">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd" />
+                                </svg>
+                                View on Map
+                            </a>
+                        <% } %>
+                    </div>
+                    <div class="px-5 py-3 bg-gray-50 border-t flex items-center justify-end space-x-3 rounded-b-lg">
+                        <a href="/warehouses/<%= warehouse._id %>/edit" class="text-xs font-medium text-indigo-600 hover:text-indigo-800 hover:underline">Edit</a>
+                        <form action="/warehouses/<%= warehouse._id %>?_method=DELETE" method="POST" class="inline" 
+                              onsubmit="return confirm('Delete warehouse: <%= warehouse.name %>? This cannot be undone and will fail if items or orders are linked.');">
+                            <button type="submit" class="text-xs font-medium text-red-600 hover:text-red-800 hover:underline p-0 border-none bg-transparent cursor-pointer">Delete</button>
+                        </form>
+                    </div>
+                </div>
+            <% }); %>
         </div>
-         <%# TODO: Add Pagination Controls if list becomes long %>
-    </div>
+    <% } else { %>
+        <div class="text-center py-10">
+            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+            </svg>
+            <h3 class="mt-2 text-sm font-medium text-gray-900">No warehouses found</h3>
+            <p class="mt-1 text-sm text-gray-500">Get started by creating a new warehouse.</p>
+            <div class="mt-6">
+                <a href="/warehouses/new" class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    <svg class="-ml-1 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                        <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+                    </svg>
+                    Add New Warehouse
+                </a>
+            </div>
+        </div>
+    <% } %>
 </section>
