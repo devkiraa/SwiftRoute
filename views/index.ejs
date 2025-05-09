@@ -108,15 +108,14 @@
 
     <section class="hero-section-video-bg">
         <div class="hero-video-container">
-            <video autoplay loop muted playsinline poster="https://cdn.pixabay.com/video/2017/03/12/8357-208052048_large.mp4" id="heroVideo">
-                <source src="public/6595364-uhd_2560_1440_24fps.mp4" type="video/mp4">
+            <video autoplay loop muted playsinline poster="https://images.unsplash.com/photo-1604782286058-5f0109b54f7a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=MnwyODE1MDl8MHwxfGFsbHx8fHx8fHx8fDE2MjYxOTI0Mzk&ixlib=rb-1.2.1&q=80&w=1080" id="heroVideo">
+                <source src="/video/6595364-uhd_2560_1440_24fps.mp4" type="video/mp4">
                 Your browser does not support the video tag.
             </video>
             <img src="https://images.unsplash.com/photo-1604782286058-5f0109b54f7a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=MnwyODE1MDl8MHwxfGFsbHx8fHx8fHx8fDE2MjYxOTI0Mzk&ixlib=rb-1.2.1&q=80&w=1080" 
                  alt="Delivery logistics background" 
-                 class="fallback-image-bg"
-                 onerror="this.style.display='none'; document.getElementById('heroVideo').style.display='none';" />
-        </div>
+                 class="fallback-image-bg" />
+                 </div>
 
         <div class="hero-content-overlay container mx-auto px-6 pt-16 pb-20 md:pt-24 md:pb-28 flex flex-col lg:flex-row items-center">
             <div class="w-full lg:w-1/2 text-center lg:text-left mb-10 lg:mb-0 lg:pr-10">
@@ -486,24 +485,54 @@
                 countrySelector.addEventListener('change', updatePrices);
             }
 
-            // Optional: Add event listener for video errors to show fallback image more reliably
+            // Video Playback Logic
             const heroVideo = document.getElementById('heroVideo');
             if (heroVideo) {
-                heroVideo.addEventListener('error', function() {
-                    // Hide video, ensure fallback image (which is CSS positioned) shows
-                    heroVideo.style.display = 'none';
-                    // The fallback image is already styled to be a background if the video fails
-                    // No explicit action needed for the image here if its CSS is correct
+                // Event listener for video errors (e.g., file not found, network error, unsupported format)
+                heroVideo.addEventListener('error', function(e) {
+                    console.error("Hero video error:", e);
+                    // Hide video element, fallback image (CSS positioned) should become visible.
+                    heroVideo.style.display = 'none'; 
                 });
 
-                // Attempt to play the video. Some browsers require interaction for autoplay,
-                // but muted autoplay is generally allowed.
-                // This can help if the 'autoplay' attribute isn't always respected.
-                heroVideo.play().catch(error => {
-                    console.warn("Video autoplay was prevented:", error);
-                    // Video could not be played automatically, fallback image will be shown.
-                    heroVideo.style.display = 'none';
+                // Event listener for when video data is loaded enough to determine dimensions
+                heroVideo.addEventListener('loadedmetadata', function() {
+                    // console.log("Video metadata loaded. Dimensions:", this.videoWidth, "x", this.videoHeight);
+                    // At this point, the video element itself is ready, but playback might still be an issue.
                 });
+                
+                // Event listener for when the video can play through without stopping for buffering
+                heroVideo.addEventListener('canplaythrough', function() {
+                    // console.log("Video can play through.");
+                    // Attempt to play if not already playing (some browsers might need this nudge)
+                    // The `autoplay` attribute should handle this, but this is an extra measure.
+                    if (heroVideo.paused) {
+                        heroVideo.play().then(() => {
+                            // console.log("Video playback started via canplaythrough event.");
+                        }).catch(error => {
+                            console.warn("Video autoplay via canplaythrough was prevented:", error);
+                            heroVideo.style.display = 'none'; // Hide if play is prevented
+                        });
+                    }
+                });
+
+
+                // Attempt to play the video. Muted autoplay is generally allowed.
+                // The `autoplay` attribute on the video tag handles the initial attempt.
+                // This JavaScript `play()` call is a secondary measure and helps catch errors.
+                const playPromise = heroVideo.play();
+
+                if (playPromise !== undefined) {
+                    playPromise.then(() => {
+                        // Autoplay started successfully or was already playing due to the attribute.
+                        // console.log("Hero video autoplay initiated or confirmed.");
+                    }).catch(error => {
+                        // Autoplay was prevented.
+                        console.warn("Hero video autoplay was prevented by the browser:", error);
+                        // Hide video element, fallback image (CSS positioned) should become visible.
+                        heroVideo.style.display = 'none'; 
+                    });
+                }
             }
         });
     </script>
