@@ -2,6 +2,9 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const Supplier = require('../models/Supplier');
+const PurchaseOrder = require('../models/PurchaseOrder'); // For future delete check
+const Company = require('../models/Company'); // For admin view
+const User = require('../models/User'); // For auth
 
 const router = express.Router();
 
@@ -10,21 +13,16 @@ function ensureAuthenticated(req, res, next) {
     if (res.locals.loggedInUser) return next();
     res.redirect('/login');
 }
-// Only Admins or Warehouse Owners can manage stores
 async function ensureAdminOrOwner(req, res, next) {
     const loggedInUser = res.locals.loggedInUser;
     if (!loggedInUser) return res.status(401).send("Authentication required.");
-
-    if (loggedInUser.role === 'admin') return next(); 
-
-    if (loggedInUser.role === 'warehouse_owner') {
-        if (!loggedInUser.companyId) {
+    if (loggedInUser.role === 'admin' || loggedInUser.role === 'warehouse_owner') {
+         if (loggedInUser.role === 'warehouse_owner' && !loggedInUser.companyId) {
              return res.status(403).render('error_page', { title: "Access Denied", message: "You are not associated with a company.", layout: './layouts/dashboard_layout' });
-        }
-        // Further checks in specific routes to ensure store belongs to user's company
+         }
         return next();
     }
-    res.status(403).render('error_page', { title: "Access Denied", message: "You do not have permission to manage stores.", layout: './layouts/dashboard_layout' });
+    res.status(403).render('error_page', { title: "Access Denied", message: "You do not have permission to manage suppliers.", layout: './layouts/dashboard_layout' });
 }
 router.use(ensureAuthenticated, ensureAdminOrOwner);
 // --- End Middleware ---
@@ -37,7 +35,9 @@ router.get('/', async (req, res) => {
         if (loggedInUser.role === 'warehouse_owner') {
             query.companyId = loggedInUser.companyId._id || loggedInUser.companyId;
         }
-        const suppliers = await Supplier.find(query).sort({ supplierName: 1 }).lean();
+        const suppliers = await Supplier.find(query)
+            .populate('companyId', 'companyName') // For Admin view
+            .sort({ supplierName: 1 }).lean();
         res.render('suppliers/index', {
             title: 'Manage Suppliers', suppliers,
             success_msg: req.query.success, error_msg: req.query.error,
@@ -49,45 +49,41 @@ router.get('/', async (req, res) => {
     }
 });
 
-// GET /suppliers/new - Show add form (Corrected res.locals access)
-router.get('/new', async (req, res) => { // Make async to fetch companies
+// GET /suppliers/new - Show add form (Corrected res.locals)
+router.get('/new', async (req, res) => {
     let companies = [];
-    // Use res.locals here, which is set by global middleware
+    // Correctly use res.locals
     if (res.locals.loggedInUser && res.locals.loggedInUser.role === 'admin') { 
         try {
             companies = await Company.find().select('companyName _id').sort({ companyName: 1 }).lean();
         } catch(err) {
             console.error("Error fetching companies for admin in GET /suppliers/new:", err);
-            // Proceed without companies list, maybe show an error later
         }
     }
     res.render('suppliers/form', {
         title: 'Add New Supplier',
         supplier: {}, 
-        formData: {}, // Pass empty formData for initial load consistency
+        formData: {}, 
         isEditing: false, 
         companies, // Pass fetched companies (or empty array)
         layout: './layouts/dashboard_layout'
     });
 });
 
-// POST /suppliers - Create new supplier
+// POST /suppliers - Create new supplier (Keep as is from response #77)
 router.post('/', async (req, res) => {
     const loggedInUser = res.locals.loggedInUser;
-    const companyId = loggedInUser.companyId?._id || loggedInUser.companyId;
+    const companyId = loggedInUser.role === 'admin' ? req.body.companyId : (loggedInUser.companyId?._id || loggedInUser.companyId);
      if (!companyId) {
-         return res.status(400).render('suppliers/form', { title: 'Add New Supplier', supplier: {}, formData: req.body, isEditing: false, error: 'Company ID is missing for user.', layout: './layouts/dashboard_layout' });
+         let companies = []; if (loggedInUser.role === 'admin') { companies = await Company.find().select('companyName _id').lean(); }
+         return res.status(400).render('suppliers/form', { title: 'Add New Supplier', supplier: {}, formData: req.body, isEditing: false, companies, error: 'Company ID is required.', layout: './layouts/dashboard_layout' });
      }
-
     const { supplierName, contactPerson, email, phone, gstin, notes, address_street, address_city, address_state, address_pincode, address_country } = req.body;
-    
     try {
-        // Check for duplicate name within company
         const existing = await Supplier.findOne({ companyId, supplierName });
         if(existing) {
              throw new mongoose.Error.ValidationError(null).addError('supplierName', new mongoose.Error.ValidatorError({ message: `Supplier name '${supplierName}' already exists for this company.` }));
         }
-
         const address = { street: address_street, city: address_city, state: address_state, pincode: address_pincode, country: address_country || 'India' };
         const newSupplier = new Supplier({ companyId, supplierName, contactPerson, email, phone, gstin: gstin?.toUpperCase(), notes, address });
         await newSupplier.save();
@@ -97,27 +93,26 @@ router.post('/', async (req, res) => {
         let errorMessage = "Failed to add supplier.";
         if (err.name === 'ValidationError') { errorMessage = Object.values(err.errors).map(val => val.message).join(', '); }
         else if (err.message) { errorMessage = err.message; }
+        let companies = []; if (loggedInUser.role === 'admin') { companies = await Company.find().select('companyName _id').lean(); }
         res.status(400).render('suppliers/form', {
-            title: 'Add New Supplier', supplier: {}, formData: req.body, isEditing: false, error: errorMessage, layout: './layouts/dashboard_layout'
+            title: 'Add New Supplier', supplier: {}, formData: req.body, isEditing: false, companies, error: errorMessage, layout: './layouts/dashboard_layout'
         });
     }
 });
 
-// GET /suppliers/:id/edit - Show edit form
+// GET /suppliers/:id/edit - Show edit form (Keep as is from response #77)
 router.get('/:id/edit', async (req, res) => {
     try {
         const loggedInUser = res.locals.loggedInUser;
         const supplier = await Supplier.findById(req.params.id).lean();
         if (!supplier) throw new Error("Supplier not found.");
-
-        // Authorization
         if (loggedInUser.role === 'warehouse_owner' && supplier.companyId.toString() !== (loggedInUser.companyId._id || loggedInUser.companyId).toString()) {
             throw new Error("Access Denied.");
         }
-
+        let companies = []; // Admin doesn't change company of existing supplier
         res.render('suppliers/form', {
             title: 'Edit Supplier', supplier: supplier, formData: supplier, isEditing: true,
-            layout: './layouts/dashboard_layout'
+            companies, layout: './layouts/dashboard_layout'
         });
     } catch (err) {
         console.error("Error fetching supplier for edit:", err);

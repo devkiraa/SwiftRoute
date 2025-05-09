@@ -2,14 +2,13 @@
 <% const isEditing = typeof supplier !== 'undefined' && supplier && supplier._id; %>
 <% const currentFormData = typeof formData === 'object' && formData !== null ? formData : {}; %>
 <% const currentSupplierData = typeof supplier === 'object' && supplier !== null ? supplier : {}; %>
-<%# Safely define companyList based on 'companies' passed from the route %>
+<%# 'companies' is passed from the route, ensure it's an array for the loop %>
 <% const companyList = Array.isArray(companies) ? companies : []; %>
-<%# Helper function to get value precedence: formData -> existingData -> default %>
 <% const getValue = (fieldPath, defaultValue = '') => { 
     let value = defaultValue;
     const fields = fieldPath.split('.');
     let formVal = currentFormData;
-    let entityVal = currentSupplierData; 
+    let entityVal = currentSupplierData;
     let formValExists = true;
     let entityValExists = true;
     // Check formData first
@@ -30,12 +29,14 @@
 
 <section class="p-6 flex-1 overflow-y-auto">
     <div class="max-w-3xl mx-auto">
-        <%# Error display %>
         <% if (typeof error === 'string' && error && error.trim() !== '') { %>
-            <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md relative" role="alert">...</div>
+            <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md relative" role="alert">
+                <strong class="font-bold">Error: </strong> <span class="block sm:inline"><%= error %></span>
+                 <button type="button" class="absolute top-0 bottom-0 right-0 px-4 py-3" onclick="this.parentElement.remove();">&times;</button>
+            </div>
         <% } %>
 
-        <form action="<%= isEditing ? '/suppliers/' + currentSupplierData._id + '?_method=PUT' : '/suppliers' %>" method="POST" class="bg-white p-6 border rounded-lg shadow-sm space-y-6">
+        <form action="<%= isEditing ? '/suppliers/' + currentSupplierData._id + '?_method=PUT' : '/suppliers' %>" method="POST" class="bg-white p-6 border rounded-lg shadow-sm space-y-5">
 
             <%# Company Selection for Admin Only on NEW form %>
             <% if (locals.loggedInUser.role === 'admin' && !isEditing) { %>
@@ -43,13 +44,13 @@
                     <label for="companyId" class="block text-sm font-medium text-gray-700 mb-1">Assign to Company <span class="text-red-500">*</span></label>
                     <select id="companyId" name="companyId" required class="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm sm:text-sm">
                         <option value="">-- Select Company --</option>
-                        <%# Use companyList defined safely at the top %>
-                        <% companyList.forEach(comp => { %> 
+                        <% companyList.forEach(comp => { %>
                             <option value="<%= comp._id %>" <%= (getValue('companyId') == comp._id) ? 'selected' : '' %>><%= comp.companyName %></option>
                         <% }); %>
                     </select>
                 </div>
             <% } else if (isEditing && currentSupplierData.companyId) { %>
+                 <%# If editing, companyId is usually not changed directly in this form %>
                  <input type="hidden" name="companyId" value="<%= currentSupplierData.companyId %>"> 
             <% } %>
 
@@ -58,46 +59,55 @@
                  <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
                         <label for="supplierName" class="block text-sm font-medium text-gray-700 mb-1">Supplier Name <span class="text-red-500">*</span></label>
-                        <input type="text" id="supplierName" name="supplierName" value="<%= getValue('supplierName') %>" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm">
+                        <input type="text" id="supplierName" name="supplierName" value="<%= getValue('supplierName') %>" required 
+                               class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm">
                     </div>
                     <div>
                         <label for="contactPerson" class="block text-sm font-medium text-gray-700 mb-1">Contact Person</label>
-                        <input type="text" id="contactPerson" name="contactPerson" value="<%= getValue('contactPerson') %>" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm">
+                        <input type="text" id="contactPerson" name="contactPerson" value="<%= getValue('contactPerson') %>" 
+                               class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm">
                     </div>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
                         <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                        <input type="email" id="email" name="email" value="<%= getValue('email') %>" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm">
+                        <input type="email" id="email" name="email" value="<%= getValue('email') %>" 
+                               class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm">
                     </div>
                     <div>
                         <label for="phone" class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                        <input type="tel" id="phone" name="phone" value="<%= getValue('phone') %>" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm">
+                        <input type="tel" id="phone" name="phone" value="<%= getValue('phone') %>" 
+                               class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm">
                     </div>
                 </div>
                  <div>
                     <label for="gstin" class="block text-sm font-medium text-gray-700 mb-1">GSTIN</label>
-                    <input type="text" id="gstin" name="gstin" value="<%= getValue('gstin') %>" placeholder="15-digit GSTIN" maxlength="15" class="mt-1 block w-full uppercase px-3 py-2 border border-gray-300 rounded-md sm:text-sm">
+                    <input type="text" id="gstin" name="gstin" value="<%= getValue('gstin') %>" 
+                           placeholder="15-digit GSTIN" maxlength="15"
+                           class="mt-1 block w-full uppercase px-3 py-2 border border-gray-300 rounded-md sm:text-sm">
                 </div>
             </fieldset>
 
             <fieldset class="border p-4 rounded-md space-y-4">
                 <legend class="text-base font-medium px-1 text-gray-700">Address</legend>
-                 <div><label for="address_street">Street Address</label><input name="address_street" value="<%= getValue('address.street') %>"></div>
-                 <div><label for="address_city">City</label><input name="address_city" value="<%= getValue('address.city') %>"></div>
-                 <div><label for="address_state">State</label><input name="address_state" value="<%= getValue('address.state') %>"></div>
-                 <div><label for="address_pincode">Pincode</label><input name="address_pincode" value="<%= getValue('address.pincode') %>"></div>
-                 <div><label for="address_country">Country</label><input name="address_country" value="<%= getValue('address.country', 'India') %>"></div>
+                 <div><label for="address_street" class="block text-xs font-medium text-gray-700 mb-1">Street Address</label><input type="text" id="address_street" name="address_street" value="<%= getValue('address.street') %>" class="block w-full px-3 py-1.5 border border-gray-300 rounded-md sm:text-sm"></div>
+                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                     <div><label for="address_city" class="block text-xs font-medium text-gray-700 mb-1">City</label><input type="text" id="address_city" name="address_city" value="<%= getValue('address.city') %>" class="block w-full px-3 py-1.5 border border-gray-300 rounded-md sm:text-sm"></div>
+                     <div><label for="address_state" class="block text-xs font-medium text-gray-700 mb-1">State</label><input type="text" id="address_state" name="address_state" value="<%= getValue('address.state') %>" class="block w-full px-3 py-1.5 border border-gray-300 rounded-md sm:text-sm"></div>
+                     <div><label for="address_pincode" class="block text-xs font-medium text-gray-700 mb-1">Pincode</label><input type="text" id="address_pincode" name="address_pincode" value="<%= getValue('address.pincode') %>" class="block w-full px-3 py-1.5 border border-gray-300 rounded-md sm:text-sm"></div>
+                 </div>
+                 <div><label for="address_country" class="block text-xs font-medium text-gray-700 mb-1">Country</label><input type="text" id="address_country" name="address_country" value="<%= getValue('address.country', 'India') %>" class="block w-full max-w-xs px-3 py-1.5 border border-gray-300 rounded-md sm:text-sm"></div>
             </fieldset>
             
             <div>
                 <label for="notes" class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                <textarea id="notes" name="notes" rows="3" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm"><%= getValue('notes') %></textarea>
+                <textarea id="notes" name="notes" rows="3" placeholder="Any specific notes about the supplier..."
+                          class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm sm:text-sm"><%= getValue('notes') %></textarea>
             </div>
 
             <div class="mt-6 pt-5 border-t border-gray-200 flex justify-end">
                 <a href="/suppliers" class="px-4 py-2 border border-gray-300 text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 mr-3">Cancel</a>
-                <button type="submit" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700">
+                <button type="submit" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
                     <%= isEditing ? 'Update Supplier' : 'Add Supplier' %>
                 </button>
             </div>
