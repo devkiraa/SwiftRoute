@@ -34,30 +34,46 @@
             transform: translateY(-5px);
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* Tailwind: shadow-lg */
         }
-        .hero-video-container {
-            position: relative;
-            width: 100%;
-            aspect-ratio: 16 / 9; /* Default aspect ratio, adjust if needed */
-            overflow: hidden;
-            border-radius: 0.5rem; /* Tailwind: rounded-lg */
-            box-shadow: 0 10px 15px -3px rgba(0,0,0,.1), 0 4px 6px -4px rgba(0,0,0,.1); /* Tailwind: shadow-xl */
+        
+        /* Hero Section Video Styling for Full Background */
+        .hero-section-video-bg {
+            position: relative; /* Anchor for the absolute video container */
+            overflow: hidden; /* Hide any video overflow */
+            background-color: #1e293b; /* Fallback background color if video and image fail */
         }
-        .hero-video-container video {
+        .hero-video-container {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            object-fit: cover; /* Ensures video covers the container */
+            z-index: 0; /* Place video behind content */
+            overflow: hidden; 
         }
-        .hero-video-container .fallback-image {
+        .hero-video-container video {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 100%; 
+            height: 100%; 
+            min-width: 100%; 
+            min-height: 100%; 
+            transform: translate(-50%, -50%);
+            object-fit: cover; /* Crucial for background video effect */
+            pointer-events: none; 
+        }
+        .hero-content-overlay {
+            position: relative; /* Ensure this is above the video */
+            z-index: 1; /* Higher z-index than the video */
+        }
+        .fallback-image-bg { /* Styling for the fallback image if video fails */
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
             object-fit: cover;
-            z-index: -1; /* Display if video fails or not supported */
+            z-index: -1; /* Behind the video element, but above the hero section's own bg */
         }
     </style>
 </head>
@@ -90,38 +106,37 @@
         </div>
     </header>
 
-    <section class="bg-gradient-to-br from-indigo-50 to-purple-100">
-        <div class="container mx-auto px-6 pt-16 pb-20 md:pt-24 md:pb-28 flex flex-col lg:flex-row items-center">
+    <section class="hero-section-video-bg">
+        <div class="hero-video-container">
+            <video autoplay loop muted playsinline poster="https://images.unsplash.com/photo-1604782286058-5f0109b54f7a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=MnwyODE1MDl8MHwxfGFsbHx8fHx8fHx8fDE2MjYxOTI0Mzk&ixlib=rb-1.2.1&q=80&w=1080" id="heroVideo">
+                <source src="YOUR_LOCAL_VIDEO.mp4" type="video/mp4">
+                <source src="YOUR_LOCAL_VIDEO.webm" type="video/webm">
+                Your browser does not support the video tag.
+            </video>
+            <img src="https://images.unsplash.com/photo-1604782286058-5f0109b54f7a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=MnwyODE1MDl8MHwxfGFsbHx8fHx8fHx8fDE2MjYxOTI0Mzk&ixlib=rb-1.2.1&q=80&w=1080" 
+                 alt="Delivery logistics background" 
+                 class="fallback-image-bg"
+                 onerror="this.style.display='none'; document.getElementById('heroVideo').style.display='none';" />
+        </div>
+
+        <div class="hero-content-overlay container mx-auto px-6 pt-16 pb-20 md:pt-24 md:pb-28 flex flex-col lg:flex-row items-center">
             <div class="w-full lg:w-1/2 text-center lg:text-left mb-10 lg:mb-0 lg:pr-10">
-                <h1 class="text-4xl md:text-5xl lg:text-6xl font-extrabold text-gray-900 mb-4 leading-tight">
+                <h1 class="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white mb-4 leading-tight" style="text-shadow: 1px 1px 3px rgba(0,0,0,0.5);">
                     Deliver Smarter,<br /> Not Harder.
                 </h1>
-                <p class="text-lg md:text-xl text-gray-600 mb-8 max-w-xl mx-auto lg:mx-0">
+                <p class="text-lg md:text-xl text-indigo-100 mb-8 max-w-xl mx-auto lg:mx-0" style="text-shadow: 1px 1px 2px rgba(0,0,0,0.5);">
                     SwiftRoute provides intelligent route optimization, real-time tracking, and seamless inventory management to streamline your logistics, reduce costs, and delight your customers.
                 </p>
                 <div class="flex flex-col sm:flex-row justify-center lg:justify-start gap-4">
-                    <a href="/register" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-lg transition duration-200 text-center text-lg">
+                    <a href="/register" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-lg transition duration-200 text-center text-lg shadow-md hover:shadow-lg">
                         Start Free Trial
                     </a>
-                     <a href="#features" class="bg-white hover:bg-gray-100 text-indigo-600 font-semibold py-3 px-8 rounded-lg transition duration-200 border border-gray-300 text-center text-lg">
+                     <a href="#features" class="bg-white hover:bg-gray-100 text-indigo-700 font-semibold py-3 px-8 rounded-lg transition duration-200 border border-gray-300 text-center text-lg shadow-md hover:shadow-lg">
                         Learn More
                     </a>
                 </div>
             </div>
-            <div class="w-full lg:w-1/2">
-                <div class="hero-video-container">
-                    <video autoplay loop muted playsinline poster="https://images.unsplash.com/photo-1604782286058-5f0109b54f7a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=MnwyODE1MDl8MHwxfGFsbHx8fHx8fHx8fDE2MjYxOTI0Mzk&ixlib=rb-1.2.1&q=80&w=1080">
-                        <source src="https://assets.mixkit.co/videos/preview/mixkit-delivery-man-carrying-a-box-in-a-warehouse-41448-large.mp4" type="video/mp4"> 
-                        Your browser does not support the video tag. You can see a
-                        <img src="https://images.unsplash.com/photo-1604782286058-5f0109b54f7a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=MnwyODE1MDl8MHwxfGFsbHx8fHx8fHx8fDE2MjYxOTI0Mzk&ixlib=rb-1.2.1&q=80&w=1080" 
-                             alt="Delivery van with a map interface in the background" 
-                             class="fallback-image"
-                             onerror="this.onerror=null;this.src='https://placehold.co/1080x720/E0E7FF/4F46E5?text=Video+Playback+Error';" />
-                        instead.
-                    </video>
-                </div>
             </div>
-        </div>
     </section>
 
     <section id="features" class="bg-white py-16 md:py-20">
@@ -396,7 +411,7 @@
                 </div>
             </div>
             <div class="border-t border-gray-700 pt-8 text-center">
-                <p class="text-sm">&copy; <span id="currentYear"></span> SwiftRoute. All rights reserved.</p>
+                <p class="text-sm">© <span id="currentYear"></span> SwiftRoute. All rights reserved.</p>
                 <div class="mt-2 space-x-4 text-sm">
                     <a href="/privacy" class="hover:text-indigo-300">Privacy Policy</a>
                     <a href="/terms" class="hover:text-indigo-300">Terms of Service</a>
@@ -426,7 +441,6 @@
             }
         });
 
-        // Close mobile menu when a link is clicked
         const navLinks = mobileNav.querySelectorAll('a');
         navLinks.forEach(link => {
             link.addEventListener('click', () => {
@@ -442,20 +456,18 @@
 
         // Dynamic Year in Footer & Pricing Logic
         document.addEventListener('DOMContentLoaded', () => {
-            // Set current year in footer
             const yearSpan = document.getElementById('currentYear');
             if (yearSpan) {
                 yearSpan.textContent = new Date().getFullYear();
             }
 
-            // Pricing Country Selector Logic
             const countrySelector = document.getElementById('country-selector');
             const priceValueElements = document.querySelectorAll('.price-value');
             const priceCurrencyElements = document.querySelectorAll('.price-currency');
 
             function updatePrices() {
                 const selectedOption = countrySelector.options[countrySelector.selectedIndex];
-                const countryCode = selectedOption.value.toLowerCase(); // e.g., 'us', 'in'
+                const countryCode = selectedOption.value.toLowerCase();
                 const currencySymbol = selectedOption.dataset.currency;
 
                 priceValueElements.forEach(el => {
@@ -470,12 +482,20 @@
             }
 
             if (countrySelector) {
-                // Default selected country to India (IN)
                 countrySelector.value = "IN"; 
-                updatePrices(); // Initial price update based on the new default
-
-                // Add event listener for changes
+                updatePrices(); 
                 countrySelector.addEventListener('change', updatePrices);
+            }
+
+            // Optional: Add event listener for video errors to show fallback image more reliably
+            const heroVideo = document.getElementById('heroVideo');
+            if (heroVideo) {
+                heroVideo.addEventListener('error', function() {
+                    // Hide video, ensure fallback image (which is CSS positioned) shows
+                    heroVideo.style.display = 'none';
+                    // The fallback image is already styled to be a background if the video fails
+                    // No explicit action needed for the image here if its CSS is correct
+                });
             }
         });
     </script>
