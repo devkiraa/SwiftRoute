@@ -3,25 +3,38 @@ require('dotenv').config(); // Load environment variables FIRST
 
 const express = require('express');
 const session = require('express-session');
+const MongoStore = require('connect-mongo'); // For storing sessions in MongoDB
 const path = require('path');
 const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 const expressLayouts = require('express-ejs-layouts');
+const passport = require('passport'); // <-- Added Passport
+require('./config/passport-setup'); // <-- Added: This will run your Passport configuration
+const methodOverride = require('method-override');
 
 // --- Session Configuration Check ---
 const sessionSecret = process.env.SESSION_SECRET;
 if (!sessionSecret) {
     console.error("\nFATAL ERROR: SESSION_SECRET environment variable is not set.");
-    console.error("Please create a .env file in the project root with a line like:");
-    console.error("SESSION_SECRET=your_very_strong_random_secret_string\n");
-    process.exit(1); // Stop the server if the secret is missing
+    // ... (your existing error message and process.exit)
+    process.exit(1); 
+}
+const dbUri = process.env.MONGO_URI; // For session store
+if (!dbUri) {
+    console.error("\nFATAL ERROR: MONGO_URI environment variable is not set for session store.");
+    process.exit(1);
 }
 
+
+// --- Import Models (Needed for Global Middleware User Population) ---
+const User = require('./models/User'); // Assuming User model path
+const Company = require('./models/Company'); // Assuming Company model path
+// Add other models if they are directly used in global middleware, though usually User and Company are primary
+
 // --- Import Routes ---
-// Ensure these files exist in the './routes/' directory
 const indexRoutes = require('./routes/index');
 const storeRoutes = require('./routes/stores');
-const userRoutes = require('./routes/users');
+const userRoutes = require('./routes/users'); // You have this, good for future user management
 const warehouseRoutes = require('./routes/warehouses');
 const itemRoutes = require('./routes/items'); 
 const supplierRoutes = require('./routes/suppliers');
@@ -29,93 +42,105 @@ const companyRoutes = require('./routes/company');
 const vehicleRoutes = require('./routes/vehicles');
 const orderRoutes = require('./routes/orders');
 const reportingRoutes = require('./routes/reporting');
-const adminRoutes = require('./routes/admin'); // If you separate admin routes
+const adminRoutes = require('./routes/admin'); 
 const deliveryRoutes = require('./routes/deliveries');
 const purchaseOrderRoutes = require('./routes/purchaseOrders');
-const methodOverride = require('method-override');
+const apiRoutes = require('./routes/api'); // For your geocoding proxy
 
 const app = express();
 
 // --- Database Connection ---
 mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log('MongoDB connected successfully.'))
-    .catch((err) => {
-        console.error('\nMongoDB Connection Error:');
-        console.error(err.message);
-        console.error("Please ensure MongoDB is running and MONGO_URI in .env is correct.\n");
-        process.exit(1); // Exit if DB connection fails
-    });
+    .catch((err) => { /* ... your existing error handling ... */ process.exit(1); });
 
 // --- View Engine Setup ---
-app.use(expressLayouts); // Use express-ejs-layouts
-app.set('layout', './layouts/dashboard_layout'); // Set default layout file
+app.use(expressLayouts); 
+app.set('layout', './layouts/dashboard_layout'); 
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
 
 // --- Static Files ---
-// Uncomment if you have a 'public' directory for CSS, client-side JS, images
- app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // --- Core Middlewares ---
-app.use(bodyParser.urlencoded({ extended: true })); // Parse URL-encoded bodies
-app.use(bodyParser.json()); // Parse JSON bodies
-app.use('/api', require('./routes/api'));
+app.use(bodyParser.urlencoded({ extended: true })); 
+app.use(bodyParser.json()); 
+app.use(methodOverride('_method')); // Should be before routes that use it
+
 // --- Session Middleware (Global) ---
 app.use(session({
-  secret: sessionSecret, // Use the variable checked above
-  resave: false,                  // Explicitly set to recommended false
-  saveUninitialized: false,       // Explicitly set to recommended false
-  cookie: {
-      secure: process.env.NODE_ENV === 'production', // Use secure cookies only in production (HTTPS)
-      httpOnly: true, // Prevent client-side JS access (good practice)
-      maxAge: 1000 * 60 * 60 * 24 // Example: 1 day expiry
+    secret: sessionSecret, 
+    resave: false,              
+    saveUninitialized: false,   
+    store: MongoStore.create({ mongoUrl: dbUri }), // Using MongoStore
+    cookie: {
+        secure: process.env.NODE_ENV === 'production', 
+        httpOnly: true, 
+        maxAge: 1000 * 60 * 60 * 24 // 1 day
     }
 }));
 
-// --- Global Middleware for User/Company/Path ---
-// --- Global Middleware (Make user and other locals available to views) ---
+// --- Passport Middleware (Initialize AFTER session middleware) ---
+app.use(passport.initialize());
+app.use(passport.session()); // Allow persistent login sessions
+// --- End Passport Middleware ---
+
+
+// --- Global Middleware for User/Company/Path and Messages ---
 app.use(async (req, res, next) => {
-  res.locals.loggedInUser = null; // Initialize defaults
-  res.locals.companyDetails = null;
-  res.locals.storeDetails = null;
+    // User object from Passport's deserializeUser is in req.user
+    res.locals.loggedInUser = req.user || null; 
+    
+    res.locals.companyDetails = null;
+    res.locals.storeDetails = null;
 
-  if (req.session && req.session.userId) {
-      try {
-          // Populate the FULL company document or select specific fields needed globally
-          const user = await mongoose.model('User').findById(req.session.userId)
-              // OPTION 1: Populate fully (simpler if you need more company fields later)
-              .populate('companyId') 
-              // OPTION 2: Select specific fields needed globally
-              // .populate('companyId', 'companyName upiId mobileNumber contactEmail') // Select name AND upiId etc.
-              .populate('storeId', 'storeName') // Keep this as is if only name needed
-              .lean(); 
-              
-          res.locals.loggedInUser = user;
-          if (user) {
-              // Now user.companyId (and thus locals.companyDetails) will have the upiId field
-              res.locals.companyDetails = user.companyId; 
-              res.locals.storeDetails = user.storeId;   
-          }
-      } catch (error) { 
-          console.error('Error fetching user/company for session:', error);
-      }
-  } 
+    if (req.user && req.user.companyId) {
+        // If companyId on user is just an ID, populate it.
+        // If passport's deserializeUser already populates it, this might be redundant but safe.
+        if (typeof req.user.companyId === 'string' || req.user.companyId instanceof mongoose.Types.ObjectId) {
+            try {
+                const company = await Company.findById(req.user.companyId).lean();
+                res.locals.companyDetails = company;
+            } catch (err) {
+                console.error("Error populating company details for locals:", err);
+            }
+        } else if (typeof req.user.companyId === 'object') { // Already populated
+            res.locals.companyDetails = req.user.companyId;
+        }
+    }
 
-  // --- Message Handling (Using Query Params - Keep from Response #75) ---
-  // Note: If you ever switch to flash, this part changes.
-  res.locals.success_msg = req.query.success ? decodeURIComponent(req.query.success.replace(/\+/g, ' ')) : null;
-  res.locals.error_msg = req.query.error ? decodeURIComponent(req.query.error.replace(/\+/g, ' ')) : null;
-  // --- End Message Handling ---
+    if (req.user && req.user.storeId) {
+        if (typeof req.user.storeId === 'string' || req.user.storeId instanceof mongoose.Types.ObjectId) {
+            try {
+                 const store = await Store.findById(req.user.storeId).select('storeName').lean(); // Select only needed fields
+                 res.locals.storeDetails = store;
+            } catch (err) {
+                console.error("Error populating store details for locals:", err);
+            }
+        } else if (typeof req.user.storeId === 'object') {
+            res.locals.storeDetails = req.user.storeId;
+        }
+    }
+    
+    // Message Handling (Using Query Params - as per your choice to defer flash)
+    res.locals.success_msg = req.query.success ? decodeURIComponent(req.query.success.replace(/\+/g, ' ')) : null;
+    res.locals.error_msg = req.query.error ? decodeURIComponent(req.query.error.replace(/\+/g, ' ')) : null;
+    // If Passport authentication fails with failureMessage: true, message is in req.session.messages
+    if (req.session && req.session.messages && req.session.messages.length > 0) {
+        res.locals.error_msg = (res.locals.error_msg ? res.locals.error_msg + " " : "") + req.session.messages.join(', ');
+        req.session.messages = []; // Clear messages after displaying
+    }
 
-  res.locals.currentPath = req.path; 
-  next();
+    res.locals.currentPath = req.path; 
+    next();
 });
 // --- End Global Middleware ---
-app.use(methodOverride('_method'));
+
 // --- Route Mounting ---
-app.use('/', indexRoutes);       // Handles /, /dashboard, /login, /logout, /register
-app.use('/stores', storeRoutes); // Handles /stores, /stores/new etc.
-app.use('/users', userRoutes);   // Handles /users, /users/new etc.
+app.use('/', indexRoutes);          // Handles /, /dashboard, /login, /logout, /register, AND NOW /auth/google routes
+app.use('/stores', storeRoutes); 
+app.use('/users', userRoutes);   
 app.use('/warehouses', warehouseRoutes);
 app.use('/vehicles', vehicleRoutes); 
 app.use('/deliveries', deliveryRoutes); 
@@ -126,6 +151,7 @@ app.use('/admin', adminRoutes);
 app.use('/company', companyRoutes); 
 app.use('/suppliers', supplierRoutes);
 app.use('/purchase-orders', purchaseOrderRoutes);
+app.use('/api', apiRoutes); // Your API routes (e.g., for geocoding)
 
 // --- Basic 404 Handler ---
 // Catch requests that don't match any routes above
