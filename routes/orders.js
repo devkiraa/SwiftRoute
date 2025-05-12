@@ -1074,6 +1074,8 @@ router.get('/invoice/view/:orderId', ensureAuthenticated, async (req, res) => {
         res.status(500).render('error_page', { title: "Error", message: `Could not display invoice: ${err.message}`, layout: './layouts/dashboard_layout' });
     }
 });
+// Assuming 'router', 'mongoose', 'Order', 'qrcode', 'numberToWordsINR', and 'printer' (Pdfmake instance)
+// are already defined and required/initialized appropriately in your file.
 
 // GET /orders/:id/invoice/pdf - Generate PDF invoice using pdfmake
 router.get('/:id/invoice/pdf', async (req, res) => { // ensureAuthenticated is already applied globally or ensureCanManageOrder can be added
@@ -1083,13 +1085,21 @@ router.get('/:id/invoice/pdf', async (req, res) => { // ensureAuthenticated is a
 
         if (!mongoose.Types.ObjectId.isValid(orderId)) return res.status(400).send("Invalid Order ID");
         
-        console.log(`Generating PDF invoice for order: ${orderId} (Size: ${size || 'A4'}, Orientation: ${orientation || 'portrait'}) using pdfmake with local fonts`);
+        console.log(`Generating PDF invoice for order: ${orderId} (Size: ${size || 'A4'}, Orientation: ${orientation || 'portrait'}) using pdfmake`);
 
         // 1. Fetch and prepare data
         const order = await Order.findById(orderId)
-            .populate({ path: 'storeId', model: 'Store', select: 'storeName address gstin stateCode phone companyId', populate: { path: 'companyId', model: 'Company', select: 'companyName' } })
-            .populate({ path: 'warehouseId', model: 'Warehouse', select: 'name address companyId', populate: { path: 'companyId', model: 'Company' }}) // Populate full company for seller
-            .populate({ path: 'orderItems.itemId', model: 'Item', select: 'name sku hsnCode uom gstRate mrp unitPrice' }) 
+            .populate({ path: 'storeId', model: 'Store', select: 'storeName address gstin stateCode phone companyId upiId', populate: { path: 'companyId', model: 'Company', select: 'companyName' } }) 
+            .populate({ 
+                path: 'warehouseId', 
+                model: 'Warehouse', 
+                select: 'name address companyId', 
+                populate: { 
+                    path: 'companyId', 
+                    model: 'Company' 
+                }
+            })
+            .populate({ path: 'orderItems.itemId', model: 'Item', select: 'name sku hsnCode uom gstRate mrp unitPrice cessRate' }) 
             .populate('createdBy', 'username')
             .populate({ path: 'assignedDeliveryPartnerId', select: 'username currentVehicleId', populate: { path: 'currentVehicleId', model: 'Vehicle', select: 'vehicleNumber' }})
             .lean();
@@ -1100,23 +1110,26 @@ router.get('/:id/invoice/pdf', async (req, res) => { // ensureAuthenticated is a
         if (!sellerCompany) return res.status(500).send("Seller company details missing for this order.");
         const receiverStore = order.storeId;
         if (!receiverStore) return res.status(500).send("Receiver store details missing for this order.");
-        const consigneeStore = receiverStore;
+        const consigneeStore = receiverStore; 
 
-        let totalTaxableValue = 0, totalCGSTAmount = 0, totalSGSTAmount = 0, totalIGSTAmount = 0, overallTotalGSTAmount = 0, runningTotalQuantity = 0;
-        const gstSummaryObject = {}; // Use plain object for gstSummary
+        let totalTaxableValue = 0, totalCGSTAmount = 0, totalSGSTAmount = 0, totalIGSTAmount = 0, overallTotalGSTAmount = 0, runningTotalQuantity = 0, totalCessAmount = 0;
+        const gstSummaryObject = {}; 
 
         const sellerStateCode = sellerCompany.address?.stateCode || sellerCompany.gstin?.substring(0,2);
         const receiverStateCode = receiverStore.stateCode || receiverStore.gstin?.substring(0,2);
-        const isIntraState = !!(sellerStateCode && receiverStateCode && sellerStateCode.toLowerCase() === receiverStateCode.toLowerCase());
+        const isIntraState = !!(sellerStateCode && receiverStateCode && sellerStateCode.trim().toLowerCase() === receiverStateCode.trim().toLowerCase());
 
         order.orderItems.forEach(entry => {
-            const item = entry.itemId; if (!item) { console.warn("Missing item data in order item entry"); return; }
+            const item = entry.itemId; if (!item) { console.warn("Missing item data in order item entry for order:", orderId); return; }
             const itemRate = parseFloat(entry.priceAtOrder) || 0;
             const itemQuantity = parseFloat(entry.quantity) || 0;
             const itemDiscount = parseFloat(entry.discountAmount || 0); 
             const taxableValue = (itemRate * itemQuantity) - itemDiscount;
             const gstRate = parseFloat(item.gstRate) || 0;
+            const itemCessRate = parseFloat(item.cessRate || 0); 
+            
             let cgst = 0, sgst = 0, igst = 0, itemTotalGst = 0;
+            let itemCess = 0;
 
             if (gstRate > 0) {
                 if (isIntraState) {
@@ -1128,14 +1141,27 @@ router.get('/:id/invoice/pdf', async (req, res) => { // ensureAuthenticated is a
                     itemTotalGst = igst;
                 }
             }
-            entry.calculatedTaxableValue = taxableValue; entry.cgstAmount = cgst; entry.sgstAmount = sgst; entry.igstAmount = igst;
-            entry.totalGstForItem = itemTotalGst; entry.lineTotal = taxableValue + itemTotalGst;
+            if (itemCessRate > 0) {
+                itemCess = parseFloat(((taxableValue * itemCessRate) / 100).toFixed(2)); 
+            }
 
-            runningTotalQuantity += itemQuantity; totalTaxableValue += taxableValue;
-            totalCGSTAmount += cgst; totalSGSTAmount += sgst; totalIGSTAmount += igst;
+            entry.calculatedTaxableValue = taxableValue; 
+            entry.cgstAmount = cgst; 
+            entry.sgstAmount = sgst; 
+            entry.igstAmount = igst;
+            entry.totalGstForItem = itemTotalGst; 
+            entry.cessAmount = itemCess; 
+            entry.lineTotal = taxableValue + itemTotalGst; // This is item subtotal before item-level cess
+
+            runningTotalQuantity += itemQuantity; 
+            totalTaxableValue += taxableValue;
+            totalCGSTAmount += cgst; 
+            totalSGSTAmount += sgst; 
+            totalIGSTAmount += igst;
             overallTotalGSTAmount += itemTotalGst;
+            totalCessAmount += itemCess; 
             
-            if (gstRate > 0) {
+            if (gstRate > 0) { 
                 if (!gstSummaryObject[gstRate]) gstSummaryObject[gstRate] = { taxable: 0, cgst: 0, sgst: 0, igst: 0, totalGst: 0 };
                 gstSummaryObject[gstRate].taxable += taxableValue;
                 gstSummaryObject[gstRate].cgst += cgst; 
@@ -1145,238 +1171,340 @@ router.get('/:id/invoice/pdf', async (req, res) => { // ensureAuthenticated is a
             }
         });
         
-        const grandTotalForInvoice = order.grandTotal !== undefined ? order.grandTotal : (totalTaxableValue + overallTotalGSTAmount - (order.totalDiscountAfterTax || 0) + (order.roundOff || 0));
+        const grandTotalForInvoice = order.grandTotal !== undefined ? order.grandTotal : (totalTaxableValue + overallTotalGSTAmount + totalCessAmount - (order.totalDiscountAfterTax || 0) + (order.roundOff || 0));
         const amountInWords = numberToWordsINR(grandTotalForInvoice);
         let vehicleNumberForInvoice = order.vehicleNumber || order.assignedDeliveryPartnerId?.currentVehicleId?.vehicleNumber;
 
+        // --- QR Code Generation ---
         const onlineViewUrl = `${req.protocol}://${req.get('host')}/orders/invoice/view/${orderId}`;
         let qrOnlineViewDataUrl = ' '; 
-        try { qrOnlineViewDataUrl = await qrcode.toDataURL(onlineViewUrl, { errorCorrectionLevel: 'M', width: 60, margin: 1 }); } 
-        catch (qrErr) { console.error("Error generating online view QR code:", qrErr); }
+        try { 
+            qrOnlineViewDataUrl = await qrcode.toDataURL(onlineViewUrl, { errorCorrectionLevel: 'M', width: 50, margin: 1 }); // Updated width to 50 for footer display
+        } catch (qrErr) { console.error("Error generating online view QR code:", qrErr); }
         
-        const verificationDataString = JSON.stringify({ /* ... key invoice data for QR ... */ });
+        const verificationDataString = JSON.stringify({ 
+            orderId: order._id, 
+            invoiceNo: order.invoiceNumber || `INV-${order._id.toString().slice(-6).toUpperCase()}`,
+            date: new Date(order.placedDate).toISOString().split('T')[0],
+            amount: grandTotalForInvoice.toFixed(2)
+        });
         let qrVerificationDataUrl = ' ';
-        try { qrVerificationDataUrl = await qrcode.toDataURL(verificationDataString, { errorCorrectionLevel: 'M', width: 60, margin: 1 }); } 
-        catch (qrErr) { console.error("Error generating verification QR code:", qrErr); }
+        try { 
+            qrVerificationDataUrl = await qrcode.toDataURL(verificationDataString, { errorCorrectionLevel: 'M', width: 80, margin: 1 }); 
+        } catch (qrErr) { console.error("Error generating verification QR code:", qrErr); }
 
+        const payeeVpa = sellerCompany.upiId || 'DEFAULT_SELLER_VPA@upi'; 
+        const payeeName = encodeURIComponent(sellerCompany.companyName || 'Seller Name');
+        const transactionAmount = grandTotalForInvoice.toFixed(2);
+        const transactionNote = encodeURIComponent(`Invoice ${order.invoiceNumber || order._id.toString().slice(-6).toUpperCase()}`);
+        const currencyCode = 'INR';
+        let upiString = `upi://pay?pa=${payeeVpa}&pn=${payeeName}&am=${transactionAmount}&tn=${transactionNote}&cu=${currencyCode}`;
+        
+        let qrUpiPaymentDataUrl = ' ';
+        try {
+            qrUpiPaymentDataUrl = await qrcode.toDataURL(upiString, { errorCorrectionLevel: 'M', width: 60, margin: 1 });
+            console.log("Generated UPI QR with string:", upiString);
+        } catch (qrErr) {
+            console.error("Error generating UPI payment QR code:", qrErr);
+        }
+
+        // --- Prepare invoiceData for pdfmake ---
         const invoiceData = {
-            order: { /* ... All order details, including calculatedTotals ... */ },
-            seller: sellerCompany, receiver: receiverStore, consignee: consigneeStore, 
-            gstSummary: gstSummaryObject, // Pass the plain object
-            currentDate: new Date(), pageSetup: { size: size || 'a4', orientation: orientation || 'portrait' },
-            isIntraState, qrOnlineViewDataUrl, qrVerificationDataUrl
-        };
-        // Ensure all fields for invoiceData.order (like billType, poNumber etc.) are correctly sourced from 'order' or given defaults
-         invoiceData.order = {
-            ...order,
-            invoiceNumber: order.invoiceNumber || `INV-${order._id.toString().slice(-6).toUpperCase()}`,
-            salesmanName: order.createdBy?.username,
-            grandTotal: grandTotalForInvoice,
-            amountInWords: amountInWords,
-            vehicleNumber: vehicleNumberForInvoice,
-            billType: order.billType || 'CREDIT',
-            poNumber: order.poNumber || '-',
-            ackNo: order.ackNo || '-',
-            irn: order.irn || '-',
-            totalDiscountAfterTax: order.totalDiscountAfterTax || 0,
-            roundOff: order.roundOff || 0,
-            warrantyText: order.warrantyText || "Standard warranty terms apply.",
-            declarationText: order.declarationText || "We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.",
-            calculatedTotals: { runningTotalQuantity, totalTaxableValue, totalCGSTAmount, totalSGSTAmount, totalIGSTAmount, overallTotalGSTAmount, runningSubTotal: totalTaxableValue + overallTotalGSTAmount }
+            order: {
+                ...order, 
+                invoiceNumber: order.invoiceNumber || `INV-${order._id.toString().slice(-6).toUpperCase()}`,
+                salesmanName: order.createdBy?.username || order.salesmanName, 
+                grandTotal: grandTotalForInvoice,
+                amountInWords: amountInWords,
+                vehicleNumber: vehicleNumberForInvoice,
+                billType: order.billType || 'CREDIT', 
+                invoiceType: order.invoiceType || 'SALES_INVOICE', 
+                poNumber: order.poNumber || '-',
+                ackNo: order.ackNo || '-', 
+                irn: order.irn || '-',   
+                totalDiscountAfterTax: order.totalDiscountAfterTax || 0,
+                roundOff: order.roundOff || 0,
+                notes: order.notes || 'All goods are received in good condition.', 
+                termsAndConditions: order.termsAndConditions || '1. Subject to jurisdiction. 2. Goods once sold will not be returned.', 
+                calculatedTotals: { 
+                    runningTotalQuantity, 
+                    totalTaxableValue, 
+                    totalCGSTAmount, 
+                    totalSGSTAmount, 
+                    totalIGSTAmount, 
+                    overallTotalGSTAmount, 
+                    totalCessAmount,      
+                    runningSubTotal: totalTaxableValue + overallTotalGSTAmount 
+                }
+            },
+            seller: sellerCompany, 
+            receiver: receiverStore, 
+            consignee: consigneeStore, 
+            gstSummary: gstSummaryObject,
+            currentDate: new Date(), 
+            pageSetup: { size: size || 'a4', orientation: orientation || 'portrait' },
+            isIntraState, 
+            qrOnlineViewDataUrl, 
+            qrVerificationDataUrl,
+            qrUpiPaymentDataUrl 
         };
         
-        // --- Create pdfmake Document Definition ---
-        // This is the large object translating your EJS template to pdfmake syntax
+        // --- pdfmake Document Definition ---
+        const minimumItemRows = 10; 
+        const actualItemRows = invoiceData.order.orderItems.length;
+        const emptyRowsNeeded = actualItemRows < minimumItemRows ? minimumItemRows - actualItemRows : 0;
+        
+        const itemTableBody = [
+            [
+                { text: 'SL No.', style: 'itemsTableHeaderCenter' }, { text: 'Item Description', style: 'itemsTableHeader' },
+                { text: 'Quantity', style: 'itemsTableHeaderRight' }, { text: 'Rate', style: 'itemsTableHeaderRight' },
+                { text: 'Disc.', style: 'itemsTableHeaderRight' }, { text: 'Taxable Value', style: 'itemsTableHeaderRight' },
+                { text: 'GST', style: 'itemsTableHeaderRight' }, { text: 'Cess', style: 'itemsTableHeaderRight' },
+                { text: 'Amount', style: 'itemsTableHeaderRight' }
+            ],
+            ...invoiceData.order.orderItems.map((entry, index) => {
+                const item = entry.itemId || {};
+                const itemCess = parseFloat(entry.cessAmount || 0); 
+                const itemTotalGst = entry.totalGstForItem || 0;
+                return [
+                    { text: index + 1, style: 'itemsTableCellCenter' },
+                    { text: `${item.name || 'N/A'}${item.sku ? ' (SKU: ' + item.sku + ')' : ''}\n${item.hsnCode ? 'HSN: '+item.hsnCode : ''}`, style: 'itemsTableCell' },
+                    { text: entry.quantity.toFixed(2), style: 'itemsTableCellRight' },
+                    { text: `₹${entry.priceAtOrder.toFixed(2)}`, style: 'itemsTableCellRight' },
+                    { text: `₹${(entry.discountAmount || 0).toFixed(2)}`, style: 'itemsTableCellRight' },
+                    { text: `₹${entry.calculatedTaxableValue.toFixed(2)}`, style: 'itemsTableCellRight' },
+                    { text: `₹${itemTotalGst.toFixed(2)}`, style: 'itemsTableCellRight' },
+                    { text: `₹${itemCess.toFixed(2)}`, style: 'itemsTableCellRight' },
+                    { text: `₹${(entry.calculatedTaxableValue + itemTotalGst + itemCess).toFixed(2)}`, style: 'itemsTableCellRightBold' } 
+                ];
+            })
+        ];
+
+        for (let i = 0; i < emptyRowsNeeded; i++) {
+            itemTableBody.push([
+                { text: ' ', style: 'emptyTableCell' }, { text: ' ', style: 'emptyTableCell' },
+                { text: ' ', style: 'emptyTableCell' }, { text: ' ', style: 'emptyTableCell' },
+                { text: ' ', style: 'emptyTableCell' }, { text: ' ', style: 'emptyTableCell' },
+                { text: ' ', style: 'emptyTableCell' }, { text: ' ', style: 'emptyTableCell' },
+                { text: ' ', style: 'emptyTableCell' }
+            ]);
+        }
+
+        itemTableBody.push([
+            { text: 'Total', style: 'itemsTableFooterLabel', colSpan: 2, alignment: 'right'}, {},
+            { text: invoiceData.order.calculatedTotals.runningTotalQuantity.toFixed(2), style: 'itemsTableFooterValueRight' },
+            {}, 
+            { text: `₹${invoiceData.order.orderItems.reduce((s,e)=>s+(e.discountAmount||0),0).toFixed(2)}`, style: 'itemsTableFooterValueRight' },
+            { text: `₹${invoiceData.order.calculatedTotals.totalTaxableValue.toFixed(2)}`, style: 'itemsTableFooterValueRight' },
+            { text: `₹${invoiceData.order.calculatedTotals.overallTotalGSTAmount.toFixed(2)}`, style: 'itemsTableFooterValueRight' },
+            { text: `₹${invoiceData.order.calculatedTotals.totalCessAmount.toFixed(2)}`, style: 'itemsTableFooterValueRight' }, 
+            { text: `₹${invoiceData.order.grandTotal.toFixed(2)}`, style: 'itemsTableFooterValueBoldRight' }
+        ]);
+
+
         const docDefinition = {
             pageSize: (invoiceData.pageSetup.size || 'A4').toUpperCase(),
             pageOrientation: (invoiceData.pageSetup.orientation || 'portrait').toLowerCase(),
-            pageMargins: [ 28, 40, 28, 40 ], // [left, top, right, bottom] (approx 10mm, 14mm, 10mm, 14mm)
-            
+            pageMargins: [30, 30, 30, 30], 
+
             content: [
-                // Seller Header
-                {
-                    stack: [
-                        { text: invoiceData.seller.companyName || 'SELLER COMPANY NAME', style: 'companyNameHeader' },
-                        { text: `${invoiceData.seller.address?.street || ''}, ${invoiceData.seller.address?.city || ''}`, style: 'addressText' },
-                        { text: `${invoiceData.seller.address?.state || ''} - ${invoiceData.seller.address?.pincode || ''}, ${invoiceData.seller.address?.country || 'INDIA'}`, style: 'addressText' },
-                        { text: `Phone: ${invoiceData.seller.mobileNumber || 'N/A'} ${invoiceData.seller.contactEmail ? '| Email: ' + invoiceData.seller.contactEmail : ''}`, style: 'addressText'},
-                        { text: `${invoiceData.seller.gstin ? 'GSTIN: ' + invoiceData.seller.gstin : ''}${invoiceData.seller.fssaiLicenseNo ? (invoiceData.seller.gstin ? ' | ' : '') + 'FSSAI: ' + invoiceData.seller.fssaiLicenseNo : ''}`, style: 'addressText', margin: [0,0,0,5] },
-                    ], alignment: 'center', margin: [0, 0, 0, 5]
-                },
-                { text: invoiceData.order.invoiceType === 'TAX_INVOICE' ? 'TAX INVOICE' : 'SALES INVOICE', style: 'invoiceTitle', alignment: 'center' },
-                invoiceData.order.invoiceType === 'TAX_INVOICE' ? { text: 'FORM GST INV-1', style: 'invoiceSubtitle', alignment: 'center', margin: [0,0,0,10] } : {},
-                
-                // Invoice Meta
-                {
-                    columns: [
-                        { stack: [ { text: `Invoice No: ${invoiceData.order.invoiceNumber}`, style: 'metaItem' }, { text: `Order No: ${invoiceData.order.poNumber || invoiceData.order._id.toString().slice(-8).toUpperCase()}`, style: 'metaItem' }, { text: `Bill Type: ${invoiceData.order.billType}`, style: 'metaItem' }, invoiceData.order.salesmanName ? {text: `Salesman: ${invoiceData.order.salesmanName}`, style: 'metaItem'} : {} ], width: '*' },
-                        { stack: [ { text: `Date: ${new Date(invoiceData.order.placedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`, style: 'metaItem', alignment: 'right' }, invoiceData.order.vehicleNumber ? { text: `Vehicle No: ${invoiceData.order.vehicleNumber}`, style: 'metaItem', alignment: 'right' } : {}, invoiceData.order.ackNo ? { text: `Ack No: ${invoiceData.order.ackNo}`, style: 'metaItem', alignment: 'right'} : {}, invoiceData.order.irn ? {text: `IRN: ${invoiceData.order.irn}`, style: 'metaTiny', alignment: 'right'} : {} ], width: '*' }
-                    ], margin: [0, 0, 0, 5], columnGap: 10
-                },
-                { canvas: [{ type: 'line', x1: 0, y1: 2, x2: 535, y2: 2, lineWidth: 0.5, lineColor: '#999999' }], margin: [0,0,0,5]}, // Adjusted line color
-
-                // Receiver & Consignee
-                {
-                    columns: [
-                        { stack: [ { text: 'Details of Receiver (Billed To):', style: 'sectionHeader' }, { text: invoiceData.receiver.storeName || invoiceData.order.customerName || 'N/A', style: 'boldText' }, { text: `${invoiceData.receiver.address?.street || ''}` }, { text: `${invoiceData.receiver.address?.city || ''}, ${invoiceData.receiver.address?.state || ''} - ${invoiceData.receiver.address?.pincode || ''}` }, { text: `State: ${invoiceData.receiver.address?.state || 'N/A'} (Code: ${invoiceData.receiver.stateCode || 'N/A'})`}, invoiceData.receiver.gstin ? { text: `GSTIN: ${invoiceData.receiver.gstin}` } : {}, invoiceData.receiver.phone ? { text: `Mobile: ${invoiceData.receiver.phone}` } : {} ], width: '*' },
-                        { stack: [ { text: 'Details of Consignee (Shipped To):', style: 'sectionHeader' }, { text: invoiceData.consignee.storeName || invoiceData.order.customerName || 'N/A', style: 'boldText' }, { text: `${invoiceData.consignee.address?.street || ''}` }, { text: `${invoiceData.consignee.address?.city || ''}, ${invoiceData.consignee.address?.state || ''} - ${invoiceData.consignee.address?.pincode || ''}` }, { text: `State: ${invoiceData.consignee.address?.state || 'N/A'} (Code: ${invoiceData.consignee.stateCode || 'N/A'})`}, invoiceData.consignee.gstin ? { text: `GSTIN: ${invoiceData.consignee.gstin}` } : {} ], width: '*' }
-                    ], columnGap: 10, margin: [0, 0, 0, 5]
-                },
-                { canvas: [{ type: 'line', x1: 0, y1: 2, x2: 535, y2: 2, lineWidth: 0.5, lineColor: '#999999' }], margin: [0,0,0,5]},
-
-                // Items Table
-                {
-                    table: {
-                        headerRows: 1,
-                        widths: ['auto', 50, '*', 35, 40, 50, 40, 55, 35, (isIntraState ? 45 : 0), (isIntraState ? 45 : 0), (!isIntraState ? 50 : 0), 60], // Adjusted widths
-                        body: [
-                            // Header Row
-                            [ {text: 'SR', style: 'tableHeader'}, {text: 'HSN', style: 'tableHeader'}, {text: 'Item Name (SKU)', style: 'tableHeader'}, {text: 'UOM', style: 'tableHeaderCenter'}, {text: 'Qty', style: 'tableHeaderRight'}, {text: 'Rate ₹', style: 'tableHeaderRight'}, {text: 'Disc ₹', style: 'tableHeaderRight'}, {text: 'Taxable ₹', style: 'tableHeaderRight'}, {text: 'GST %', style: 'tableHeaderCenter'}, ...(isIntraState ? [{text: 'CGST ₹', style: 'tableHeaderRight'}, {text: 'SGST ₹', style: 'tableHeaderRight'}] : [{text:'',border:[false,false,false,false]},{text:'',border:[false,false,false,false]}]), ...(!isIntraState ? [{text: 'IGST ₹', style: 'tableHeaderRight'}] : [{text:'',border:[false,false,false,false]}]), {text: 'Total ₹', style: 'tableHeaderRight'}],
-                            // Item Rows
-                            ...invoiceData.order.orderItems.map((entry, index) => {
-                                const item = entry.itemId || {};
-                                let gstCols = [];
-                                if(isIntraState) { gstCols = [{text: entry.cgstAmount.toFixed(2), style: 'tableCellRight'}, {text: entry.sgstAmount.toFixed(2), style: 'tableCellRight'}]; }
-                                else { gstCols = [{text: '', border:[false,false,false,false]}, {text: '', border:[false,false,false,false]}]; } // Empty cells for CGST/SGST if IGST
-                                
-                                let igstCol = [];
-                                if(!isIntraState) { igstCol = [{text: entry.igstAmount.toFixed(2), style: 'tableCellRight'}]; }
-                                else { igstCol = [{text: '', border:[false,false,false,false]}];}
-
-
-                                return [
-                                    { text: index + 1, style: 'tableCellCenter' }, { text: item.hsnCode || '-', style: 'tableCell' },
-                                    { text: `${item.name || 'Unknown'} (${item.sku || 'N/A'})`, style: 'tableCell' }, { text: item.uom?.toUpperCase() || 'PCS', style: 'tableCellCenter' },
-                                    { text: entry.quantity.toFixed(2), style: 'tableCellRight' }, { text: entry.priceAtOrder.toFixed(2), style: 'tableCellRight' },
-                                    { text: (entry.discountAmount || 0).toFixed(2), style: 'tableCellRight' }, { text: entry.calculatedTaxableValue.toFixed(2), style: 'tableCellRight' },
-                                    { text: `${item.gstRate || 0}%`, style: 'tableCellCenter' }, ...gstCols, ...igstCol,
-                                    { text: entry.lineTotal.toFixed(2), style: 'tableCellRight', bold: true }
-                                ];
-                            }),
-                            // Footer Row for Totals
-                            [ { text: 'TOTALS:', colSpan: 4, alignment: 'right', bold: true, style: 'tableCellFooter' }, {}, {}, {}, { text: invoiceData.order.calculatedTotals.runningTotalQuantity.toFixed(2), bold: true, style: 'tableCellRightFooter' }, {}, { text: invoiceData.order.orderItems.reduce((s,e)=>s+(e.discountAmount||0),0).toFixed(2), bold: true, style: 'tableCellRightFooter'}, { text: invoiceData.order.calculatedTotals.totalTaxableValue.toFixed(2), bold: true, style: 'tableCellRightFooter' }, {}, ...(isIntraState ? [{ text: invoiceData.order.calculatedTotals.totalCGSTAmount.toFixed(2), bold: true, style: 'tableCellRightFooter'}, { text: invoiceData.order.calculatedTotals.totalSGSTAmount.toFixed(2), bold: true, style: 'tableCellRightFooter'}] : [{text:'',border:[false,false,false,false]},{text:'',border:[false,false,false,false]}]), ...(!isIntraState ? [{text: invoiceData.order.calculatedTotals.totalIGSTAmount.toFixed(2), bold: true, style: 'tableCellRightFooter'}] : [{text:'',border:[false,false,false,false]}]), { text: grandTotalForInvoice.toFixed(2), bold: true, style: 'tableCellRightFooter' } ]
-                        ]
-                    }, layout: { // Custom layout for solid outer and header lines, light inner lines
-                        hLineWidth: function (i, node) { return (i === 0 || i === node.table.body.length || i === 1 || i === node.table.body.length -1 ) ? 0.75 : 0.25; },
-                        vLineWidth: function (i, node) { return (i === 0 || i === node.table.widths.length) ? 0.75 : 0.25; },
-                        hLineColor: function (i, node) { return (i === 0 || i === node.table.body.length || i === 1 || i === node.table.body.length-1) ? 'black' : 'grey'; },
-                        vLineColor: function (i, node) { return (i === 0 || i === node.table.widths.length) ? 'black' : 'grey'; },
-                    }, margin: [0, 5, 0, 10]
-                },
-                
-                // Summary Section
+                // --- Section 1: Header ---
                 {
                     columns: [
                         { 
                             stack: [
-                                (Object.keys(invoiceData.gstSummary).length > 0) ? { text: 'Tax Summary (GST % wise)', style: 'sectionSubHeader', margin:[0,5,0,2] } : {},
-                                (Object.keys(invoiceData.gstSummary).length > 0) ? {
-                                     table: {
-                                         widths: ['auto', '*', (isIntraState ? 'auto' : 0), (isIntraState ? 'auto' : 0), (!isIntraState ? 'auto' : 0), 'auto'],
-                                         body: [
-                                             [{text: 'GST %', style: 'tableHeaderSmallCenter'}, {text: 'Taxable Val ₹', style: 'tableHeaderSmallRight'}, ...(isIntraState ? [{text: 'CGST ₹', style: 'tableHeaderSmallRight'}, {text: 'SGST ₹', style: 'tableHeaderSmallRight'}] : [{text:'',border:[false,false,false,false]},{text:'',border:[false,false,false,false]}]), ...(!isIntraState ? [{text: 'IGST ₹', style: 'tableHeaderSmallRight'}] : [{text:'',border:[false,false,false,false]}]), {text: 'Total GST ₹', style: 'tableHeaderSmallRight'}],
-                                             ...Object.entries(invoiceData.gstSummary).map(([rate, amounts]) => [
-                                                 {text: `${rate}%`, style: 'tableCellSmallCenter'}, {text: amounts.taxable.toFixed(2), style: 'tableCellSmallRight'},
-                                                 ...(isIntraState ? [{text: amounts.cgst.toFixed(2), style: 'tableCellSmallRight'}, {text: amounts.sgst.toFixed(2), style: 'tableCellSmallRight'}] : [{text:'',border:[false,false,false,false]},{text:'',border:[false,false,false,false]}]),
-                                                 ...(!isIntraState ? [{text: amounts.igst.toFixed(2), style: 'tableCellSmallRight'}] : [{text:'',border:[false,false,false,false]}]),
-                                                 {text: amounts.totalGst.toFixed(2), style: 'tableCellSmallRight'}
-                                             ])
-                                         ]
-                                     }, layout: 'lightHorizontalLines', margin: [0,0,0,10]
-                                } : {},
-                                { text: `Amount (in words): ${invoiceData.order.amountInWords}`, style: 'amountInWordsText'},
-                            ], width: '65%'
+                                { text: invoiceData.seller.companyName || 'Business Name', style: 'businessName' },
+                                { text: 'Bill From', style: 'sectionLabel', margin: [0, 10, 0, 2] },
+                                { text: invoiceData.seller.companyName || 'Seller Company Name', style: 'addressBlockText' },
+                                { text: `${invoiceData.seller.address?.street || ''}${invoiceData.seller.address?.city ? ', ' + invoiceData.seller.address.city : ''}`, style: 'addressBlockText' },
+                                { text: `${invoiceData.seller.address?.state || ''}${invoiceData.seller.address?.pincode ? ' - ' + invoiceData.seller.address.pincode : ''}`, style: 'addressBlockText' },
+                                { text: `GSTIN: ${invoiceData.seller.gstin || 'N/A'}`, style: 'addressBlockText' },
+                                { text: `Phone: ${invoiceData.seller.mobileNumber || 'N/A'}`, style: 'addressBlockText' },
+                            ],
+                            width: '60%'
                         },
                         { 
                             stack: [
-                                {
-                                    table: {
-                                        widths: ['*', 'auto'],
-                                        body: [
-                                            [{text: 'Sub Total (Taxable):', style: 'summaryLabel'}, {text: `₹${invoiceData.order.calculatedTotals.totalTaxableValue.toFixed(2)}`, style: 'summaryValue'}],
-                                            isIntraState ? [{text: `CGST:`, style: 'summaryLabel'}, {text: `₹${invoiceData.order.calculatedTotals.totalCGSTAmount.toFixed(2)}`, style: 'summaryValue'}] : [],
-                                            isIntraState ? [{text: `SGST/UTGST:`, style: 'summaryLabel'}, {text: `₹${invoiceData.order.calculatedTotals.totalSGSTAmount.toFixed(2)}`, style: 'summaryValue'}] : [],
-                                            !isIntraState ? [{text: `IGST:`, style: 'summaryLabel'}, {text: `₹${invoiceData.order.calculatedTotals.totalIGSTAmount.toFixed(2)}`, style: 'summaryValue'}] : [],
-                                            (invoiceData.order.totalDiscountAfterTax > 0) ? [{text: 'Discount After Tax:', style: 'summaryLabel'}, {text: `- ₹${invoiceData.order.totalDiscountAfterTax.toFixed(2)}`, style: 'summaryValue'}] : [],
-                                            (invoiceData.order.roundOff) ? [{text: 'Round Off:', style: 'summaryLabel'}, {text: `₹${invoiceData.order.roundOff.toFixed(2)}`, style: 'summaryValue'}] : [],
-                                            [{text: 'GRAND TOTAL:', style: 'grandTotalLabel'}, {text: `₹${invoiceData.order.grandTotal.toFixed(2)}`, style: 'grandTotalValue'}]
-                                        ].filter(row => Array.isArray(row) && row.length > 0)
-                                    }, layout: 'noBorders'
-                                }
-                            ], width: '35%'
+                                { text: 'Document Type', style: 'sectionLabel', alignment: 'right' },
+                                { text: invoiceData.order.invoiceType === 'TAX_INVOICE' ? 'TAX INVOICE' : (invoiceData.order.billType === 'CREDIT_NOTE' ? 'CREDIT NOTE' : 'SALES INVOICE'), style: 'documentType', alignment: 'right' },
+                                { text: `Inv No: ${invoiceData.order.invoiceNumber}`, style: 'metaTextRight' },
+                                { text: `Date: ${new Date(invoiceData.order.placedDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}`, style: 'metaTextRight' },
+                                 invoiceData.order.poNumber ? { text: `PO No: ${invoiceData.order.poNumber}`, style: 'metaTextRight' } : {},
+                                 invoiceData.order.vehicleNumber ? { text: `Vehicle No: ${invoiceData.order.vehicleNumber}`, style: 'metaTextRight' } : {},
+                            ],
+                            width: '40%',
+                            alignment: 'right'
                         }
-                    ], columnGap: 10, margin: [0, 5, 0, 10]
+                    ],
+                    marginBottom: 10
                 },
-                { canvas: [{ type: 'line', x1: 0, y1: 2, x2: 535, y2: 2, lineWidth: 0.5, lineColor: '#999999' }], margin: [0,5,0,5]},
-
-                (sellerCompany.bankDetails?.accountName || sellerCompany.upiId) ? { text: [ {text: 'Bank Details: ', bold: true}, sellerCompany.bankDetails?.bankName ? `${sellerCompany.bankDetails.bankName}, A/c: ${sellerCompany.bankDetails.accountNumber || 'N/A'}, IFSC: ${sellerCompany.bankDetails.ifscCode || 'N/A'}, Name: ${sellerCompany.bankDetails.accountName}` : '', (sellerCompany.bankDetails?.accountName && sellerCompany.upiId) ? ' | ' : '', sellerCompany.upiId ? `UPI ID: ${sellerCompany.upiId}` : '' ], style: 'footerTextSmall', margin: [0,0,0,5] } : {},
-                
+                { canvas: [{ type: 'line', x1: 0, y1: 3, x2: 535, y2: 3, lineWidth: 0.5, lineColor: '#888888' }], margin: [0, 0, 0, 10] },
+        
+                // --- Section 2: Bill To, Ship To, Verification QR ---
                 {
                     columns: [
-                        { stack:[ {text: 'Terms & Conditions:', style: 'sectionSubHeader', margin: [0,5,0,2]}, {text: "1. Goods once sold will not be taken back or exchanged. 2. Interest @18% p.a. will be charged if the bill is not paid within 30 days. 3. All disputes subject to local jurisdiction.", style:'termsText'}, {text: 'Declaration:', style: 'sectionSubHeader', margin: [0,5,0,2]}, {text: invoiceData.order.declarationText, style:'termsText'} ], width: '*' },
-                        { stack: [ qrOnlineViewDataUrl !== ' ' ? { image: qrOnlineViewDataUrl, width: 60, alignment: 'center', margin: [0,0,0,2] } : {}, qrOnlineViewDataUrl !== ' ' ? { text: 'View Online', style: 'qrLabel', alignment: 'center'} : {}, qrVerificationDataUrl !== ' ' ? { image: qrVerificationDataUrl, width: 60, alignment: 'center', margin: [0,5,0,2] } : {}, qrVerificationDataUrl !== ' ' ? { text: 'Verify Invoice', style: 'qrLabel', alignment: 'center'} : {} ], width: 'auto', alignment: 'right' }
-                    ], columnGap: 10, margin: [0,5,0,0] // Reduced bottom margin
+                        { 
+                            stack: [
+                                { text: 'Bill To', style: 'sectionLabel', margin: [0, 0, 0, 2] },
+                                { text: invoiceData.receiver.storeName || invoiceData.order.customerName || 'RECEIVER NAME', style: 'addressBlockTextBold' },
+                                { text: invoiceData.receiver.address?.street || '', style: 'addressBlockText' },
+                                { text: `${invoiceData.receiver.address?.city || ''}, ${invoiceData.receiver.address?.state || ''} - ${invoiceData.receiver.address?.pincode || ''}`, style: 'addressBlockText' },
+                                { text: `GSTIN: ${invoiceData.receiver.gstin || 'N/A'}`, style: 'addressBlockText' },
+                                { text: `State: ${invoiceData.receiver.address?.state || 'N/A'} (Code: ${invoiceData.receiver.stateCode || 'N/A'})`, style: 'addressBlockText' },
+                                { text: `Phone: ${invoiceData.receiver.phone || 'N/A'}`, style: 'addressBlockText' },
+                            ],
+                            width: '33%'
+                        },
+                        { 
+                            stack: [
+                                { text: 'Ship To', style: 'sectionLabel', margin: [0, 0, 0, 2] },
+                                { text: invoiceData.consignee.storeName || invoiceData.order.customerName || 'CONSIGNEE NAME', style: 'addressBlockTextBold' },
+                                { text: invoiceData.consignee.address?.street || '', style: 'addressBlockText' },
+                                { text: `${invoiceData.consignee.address?.city || ''}, ${invoiceData.consignee.address?.state || ''} - ${invoiceData.consignee.address?.pincode || ''}`, style: 'addressBlockText' },
+                                { text: `GSTIN: ${invoiceData.consignee.gstin || 'N/A'}`, style: 'addressBlockText' },
+                                { text: `State: ${invoiceData.consignee.address?.state || 'N/A'} (Code: ${invoiceData.consignee.stateCode || 'N/A'})`, style: 'addressBlockText' },
+                            ],
+                            width: '33%'
+                        },
+                        { 
+                            stack: [
+                                (invoiceData.qrVerificationDataUrl && invoiceData.qrVerificationDataUrl !== ' ') ?
+                                    { image: invoiceData.qrVerificationDataUrl, width: 80, height: 80, alignment: 'center' } :
+                                    { text: '[Verification QR]', style: 'qrPlaceholder', alignment: 'center', margin: [0, 20, 0, 20] }
+                            ],
+                            width: '34%', 
+                            alignment: 'center'
+                        }
+                    ],
+                    marginBottom: 10
+                },
+                { canvas: [{ type: 'line', x1: 0, y1: 3, x2: 535, y2: 3, lineWidth: 0.5, lineColor: '#888888' }], margin: [0, 0, 0, 10] },
+        
+                // --- Section 3: Items Table ---
+                {
+                    table: {
+                        headerRows: 1,
+                        widths: ['auto', '*', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto'],
+                        body: itemTableBody 
+                    },
+                    layout: {
+                        hLineWidth: (i, node) => (i === 0 || i === 1 || i === node.table.body.length) ? 0.75 : 0.25,
+                        vLineWidth: (i, node) => (i === 0 || i === node.table.widths.length) ? 0.75 : 0.25,
+                        hLineColor: (i, node) => (i === 0 || i === 1 || i === node.table.body.length) ? '#555555' : '#AAAAAA',
+                        vLineColor: (i, node) => (i === 0 || i === node.table.widths.length) ? '#555555' : '#AAAAAA',
+                        paddingTop: () => 3, paddingBottom: () => 3,
+                    },
+                    marginBottom: 15 
+                },
+        
+                // --- Section 4: Payment Details, Notes, T&C, Total, Signature ---
+                {
+                    columns: [
+                        {
+                            stack: [
+                                { text: 'Payment Details', style: 'sectionLabel', margin: [0, 0, 0, 2] },
+                                ...(invoiceData.seller.bankDetails?.bankName ? [{text: `Bank: ${invoiceData.seller.bankDetails.bankName}`, style: 'footerTextInfo'}] : []),
+                                ...(invoiceData.seller.bankDetails?.accountNumber ? [{text: `A/c No: ${invoiceData.seller.bankDetails.accountNumber}`, style: 'footerTextInfo'}] : []),
+                                ...(invoiceData.seller.bankDetails?.ifscCode ? [{text: `IFSC: ${invoiceData.seller.bankDetails.ifscCode}`, style: 'footerTextInfo'}] : []),
+                                ...(invoiceData.seller.upiId ? [{text: `UPI ID: ${invoiceData.seller.upiId}`, style: 'footerTextInfoBold', margin: [0,0,0,5]}] : []),
+                                (invoiceData.qrUpiPaymentDataUrl && invoiceData.qrUpiPaymentDataUrl !== ' ') ?
+                                    { stack: [
+                                        { image: invoiceData.qrUpiPaymentDataUrl, width: 60, height: 60, margin: [0, 5, 0, 2] },
+                                        { text: 'Scan for UPI Payment', style: 'qrLabelSmall', alignment: 'left', margin: [0,0,0,5]}
+                                    ]} :
+                                    { text: '[UPI QR]', style: 'qrPlaceholderSmall', margin: [0, 10, 0, 10] },
+                                { text: 'Notes', style: 'sectionLabel', margin: [0, 10, 0, 2] },
+                                { text: invoiceData.order.notes || 'All goods are received in good condition.', style: 'footerTextInfo', margin: [0,0,0,10] },
+                                { text: 'T&C', style: 'sectionLabel', margin: [0, 0, 0, 2] },
+                                { text: invoiceData.order.termsAndConditions || '1. Subject to jurisdiction. 2. Goods once sold will not be returned.', style: 'footerTextInfo' },
+                            ],
+                            width: '60%'
+                        },
+                        {
+                            stack: [
+                                { text: 'TOTAL', style: 'finalTotalText', alignment: 'right' },
+                                { text: `₹${invoiceData.order.grandTotal.toFixed(2)}`, style: 'finalTotalAmount', alignment: 'right', margin: [0,0,0,40] },
+                                { text: 'Signature', style: 'sectionLabel', alignment: 'right', margin: [0,20,0,2] },
+                                { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 120, y2: 0, lineWidth: 0.5, lineColor: '#000000' }], alignment: 'right', margin:[0,0,0,2]},
+                                { text: `For ${invoiceData.seller.companyName || 'Seller Company'}`, style: 'signatureForText', alignment: 'right' }
+                            ],
+                            width: '40%',
+                            alignment: 'right'
+                        }
+                    ],
+                    columnGap: 20,
                 }
             ],
-
-            // --- Footer ---
+        
             footer: function(currentPage, pageCount) { 
+                let footerColumns = [
+                    { // Left: Page Number
+                        text: `Page ${currentPage.toString()} of ${pageCount}`,
+                        style: 'pageFooter',
+                        alignment: 'left',
+                        width: '*' // Takes up available space on the left
+                    }
+                ];
+            
+                if (invoiceData.qrOnlineViewDataUrl && invoiceData.qrOnlineViewDataUrl !== ' ') {
+                    footerColumns.push({ // Right: Online View QR
+                        image: invoiceData.qrOnlineViewDataUrl,
+                        width: 30, 
+                        height: 30,
+                        alignment: 'right' // Image itself aligned to right of its column
+                    });
+                } else {
+                    footerColumns.push({text: '', width: 30, alignment: 'right'}); // Placeholder if no QR
+                }
+            
                 return {
-                    columns: [
-                        { text: `Invoice: ${order.invoiceNumber || order._id.toString().slice(-6).toUpperCase()}`, alignment: 'left', style: 'footerText'},
-                        { text: `Page ${currentPage.toString()} of ${pageCount}`, alignment: 'center', style: 'footerText' },
-                        { text: `Print: ${new Date(invoiceData.currentDate).toLocaleString('en-IN', {dateStyle:'short', timeStyle:'short'})}`, alignment: 'right', style: 'footerText'}
-                    ],
-                    margin: [28, 10, 28, 0] // Left, Top, Right, Bottom
+                    columns: footerColumns,
+                    margin: [30, -20, 30, 10] // L, T, R, B (Adjusted Top margin to pull footer up)
                 };
             },
-            // --- Header for subsequent pages (Optional) ---
-            // header: function(currentPage, pageCount, pageSize) { /* ... */ },
-
-            // --- Styles Definition ---
+        
             styles: {
-                companyNameHeader: { fontSize: 16, bold: true, alignment: 'center', margin: [0, 0, 0, 2] },
-                addressText: { fontSize: 7.5, alignment: 'center', margin: [0,0,0,1],lineHeight: 1.2 },
-                invoiceTitle: { fontSize: 12, bold: true, alignment: 'center', margin: [0, 2, 0, 1], characterSpacing: 1 },
-                invoiceSubtitle: { fontSize: 7, alignment: 'center', margin: [0,0,0,5] },
-                metaItem: { fontSize: 8, margin: [0,1,0,1], lineHeight: 1.2 },
-                metaTiny: { fontSize: 6.5, margin: [0,1,0,1], lineHeight: 1.2 },
-                sectionHeader: { fontSize: 8.5, bold: true, margin: [0, 0, 0, 3], decoration: 'underline', decorationStyle: 'dotted'},
-                sectionSubHeader: { fontSize: 7.5, bold: true, margin: [0,0,0,2]},
-                boldText: { bold: true, fontSize: 8 },
-                tableHeader: { bold: true, fontSize: 7.5, fillColor: '#eeeeee', alignment: 'center' },
-                tableHeaderRight: { bold: true, fontSize: 7.5, fillColor: '#eeeeee', alignment: 'right' },
-                tableHeaderCenter: { bold: true, fontSize: 7.5, fillColor: '#eeeeee', alignment: 'center' },
-                tableCell: { fontSize: 7.5 },
-                tableCellCenter: { fontSize: 7.5, alignment: 'center' },
-                tableCellRight: { fontSize: 7.5, alignment: 'right' },
-                tableCellFooter: { fontSize: 7.5, alignment: 'right', bold: true, margin: [0,2,0,2] },
-                tableCellRightFooter: { fontSize: 7.5, alignment: 'right', bold: true, margin: [0,2,0,2] },
-                tableHeaderSmallCenter: {fontSize: 7, bold:true, fillColor: '#f5f5f5', alignment: 'center'},
-                tableHeaderSmallRight: {fontSize: 7, bold:true, fillColor: '#f5f5f5', alignment: 'right'},
-                tableCellSmallCenter: {fontSize: 7, alignment: 'center'},
-                tableCellSmallRight: {fontSize: 7, alignment: 'right'},
-                summaryLabel: { fontSize: 8, alignment: 'right', margin: [0,1,5,1] },
-                summaryValue: { fontSize: 8, bold: true, alignment: 'right', margin: [0,1,0,1] },
-                grandTotalLabel: { fontSize: 9, bold: true, alignment: 'right', margin: [0,2,5,2] },
-                grandTotalValue: { fontSize: 9, bold: true, alignment: 'right', margin: [0,2,0,2] },
-                amountInWordsText: { fontSize: 8, italics: true, margin: [0, 5, 0, 5] },
-                footerTextSmall: { fontSize: 7, margin: [0,0,0,3] },
-                termsText: { fontSize: 7, alignment: 'justify', lineHeight: 1.2},
-                qrLabel: {fontSize: 6.5, alignment: 'center', margin: [0,0,0,5]},
-                footerText: { fontSize: 7, color: 'grey', margin: [0,5,0,0] }
+                businessName: { fontSize: 16, bold: true, margin: [0, 0, 0, 2] },
+                sectionLabel: { fontSize: 8, bold: true, color: '#444444' },
+                addressBlockText: { fontSize: 8, margin: [0, 0.5, 0, 0.5], lineHeight: 1.2 },
+                addressBlockTextBold: { fontSize: 8, bold: true, margin: [0, 0.5, 0, 0.5], lineHeight: 1.2 },
+                documentType: { fontSize: 12, bold: true, margin: [0, 2, 0, 2] },
+                metaTextRight: { fontSize: 8, alignment: 'right', margin: [0, 0.5, 0, 0.5] },
+                customerHeader: { fontSize: 8, bold: true, margin: [0, 0, 0, 2] }, 
+                customerAddress: { fontSize: 8, margin: [0, 0.5, 0, 0.5], lineHeight: 1.2 },
+                customerInfo: { fontSize: 8, margin: [0, 0.5, 0, 0.5], lineHeight: 1.2 },
+                qrPlaceholder: { fontSize: 10, color: '#AAAAAA', italics: true },
+                qrPlaceholderSmall: { fontSize: 8, color: '#AAAAAA', italics: true, alignment: 'center' },
+                qrLabelSmall: { fontSize: 7, color: '#555555', alignment: 'center' },
+                itemsTableHeader: { fontSize: 7.5, bold: true, fillColor: '#EAEAEA', alignment: 'left', margin: [2,3,2,3] },
+                itemsTableHeaderCenter: { fontSize: 7.5, bold: true, fillColor: '#EAEAEA', alignment: 'center', margin: [2,3,2,3] },
+                itemsTableHeaderRight: { fontSize: 7.5, bold: true, fillColor: '#EAEAEA', alignment: 'right', margin: [2,3,2,3] },
+                itemsTableCell: { fontSize: 7.5, margin: [2,2,2,2], lineHeight: 1.1 },
+                itemsTableCellCenter: { fontSize: 7.5, alignment: 'center', margin: [2,2,2,2] },
+                itemsTableCellRight: { fontSize: 7.5, alignment: 'right', margin: [2,2,2,2] },
+                itemsTableCellRightBold: { fontSize: 7.5, alignment: 'right', bold: true, margin: [2,2,2,2] },
+                itemsTableFooterLabel: { fontSize: 8, bold: true, margin: [2,3,2,3] },
+                itemsTableFooterValueRight: { fontSize: 8, bold: true, alignment: 'right', margin: [2,3,2,3] },
+                itemsTableFooterValueBoldRight: { fontSize: 8.5, bold: true, alignment: 'right', margin: [2,3,2,3] },
+                emptyTableCell: { fontSize: 6, margin: [2, 3, 2, 3],  border: [false, false, false, false], lineHeight: 1.1 }, 
+                finalTotalText: { fontSize: 10, bold: true, color: '#333333' },
+                finalTotalAmount: { fontSize: 14, bold: true },
+                footerTextInfo: { fontSize: 7.5, lineHeight: 1.2, color: '#333333' },
+                footerTextInfoBold: { fontSize: 7.5, bold:true, lineHeight: 1.2, color: '#333333' },
+                signatureForText: { fontSize: 7.5, color: '#333333' },
+                pageFooter: { fontSize: 7, color: '#666666' }
             },
             defaultStyle: {
-                font: 'Roboto', // Use the font defined above
-                fontSize: 8, // Default for most text not explicitly styled
-                lineHeight: 1.3
+                font: 'Roboto', 
+                fontSize: 8,
+                lineHeight: 1.2,
+                color: '#222222'
             }
-        }; // End docDefinition
+        };
+        // End of docDefinition
 
-        // Generate PDF document
         const pdfDoc = printer.createPdfKitDocument(docDefinition);
         
-        // Stream PDF to response
         const chunks = [];
         pdfDoc.on('data', chunk => chunks.push(chunk));
         pdfDoc.on('end', () => {
