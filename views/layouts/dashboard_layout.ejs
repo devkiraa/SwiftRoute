@@ -3,163 +3,251 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title><%= typeof locals.pageTitle !== 'undefined' ? locals.pageTitle : 'SwiftRoute' %></title> <%# Use locals.pageTitle consistently %>
+    <title><%= typeof locals.pageTitle !== 'undefined' ? locals.pageTitle : 'SwiftRoute' %></title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"/>
     <style>
         body { font-family: 'Inter', sans-serif; }
-        /* Dropdown styles */
-        .dropdown-menu { transition: opacity 0.2s ease-out, visibility 0s linear 0.2s, transform 0.2s ease-out; visibility: hidden; opacity: 0; transform: translateY(-10px); z-index: 50; }
-        .dropdown-menu.show { visibility: visible; opacity: 1; transform: translateY(0px); transition: opacity 0.2s ease-out, visibility 0s linear 0s, transform 0.2s ease-out; }
-        /* Sidebar base styles */
-        #sidebar { transition: width 0.3s ease-in-out; width: 16rem; /* w-64 */ }
-        #main-content { transition: margin-left 0.3s ease-in-out; margin-left: 16rem; /* Match sidebar width */ }
-        /* Sidebar collapsed styles */
-        #sidebar.collapsed { width: 0; }
-        #sidebar.collapsed > * { visibility: hidden; opacity: 0; } /* Hide direct children */
-        #main-content.sidebar-collapsed { margin-left: 0; }
-        /* Active link */
+        
+        .dropdown-menu { 
+            transition: opacity 0.2s ease-out, visibility 0s linear 0.2s, transform 0.2s ease-out; 
+            visibility: hidden; opacity: 0; transform: translateY(10px);
+            z-index: 50; 
+        }
+        .dropdown-menu.show { 
+            visibility: visible; opacity: 1; transform: translateY(0px); 
+            transition: opacity 0.2s ease-out, visibility 0s linear 0s, transform 0.2s ease-out; 
+        }
+
+        #sidebar { 
+            transition: transform 0.3s ease-in-out;
+            width: 16rem; /* w-64 */
+        }
+        #main-content { 
+            transition: margin-left 0.3s ease-in-out; 
+        }
+
+        /* Desktop: Sidebar visible, main content has margin */
+        @media (min-width: 768px) { /* md breakpoint */
+            #sidebar {
+                transform: translateX(0);
+            }
+            #main-content {
+                margin-left: 16rem; 
+            }
+            #hamburger-button {
+                display: none; /* Hide hamburger on desktop */
+            }
+        }
+        
+        /* Mobile: Sidebar hidden by default, main content full width */
+        @media (max-width: 767.98px) {
+            #sidebar {
+                transform: translateX(-100%); /* Collapsed by default */
+            }
+            #sidebar.open { /* Class to show sidebar on mobile */
+                transform: translateX(0);
+            }
+            #main-content {
+                margin-left: 0; 
+            }
+            /* Hamburger is displayed by default due to md:hidden on its container's sibling */
+        }
+
         .sidebar-link-active { background-color: #3b82f6; color: white; font-weight: 500; }
+        .sidebar-link-active svg { color: white; }
     </style>
 </head>
-<body class="bg-gray-50">
+<body class="bg-gray-50 text-gray-800">
 
 <div class="flex min-h-screen">
 
-    <aside id="sidebar" class="bg-white border-r border-gray-200 flex flex-col flex-shrink-0 fixed inset-y-0 left-0 z-30 overflow-hidden">
+    <aside id="sidebar" class="bg-white border-r border-gray-200 flex flex-col flex-shrink-0 fixed inset-y-0 left-0 z-40 overflow-y-auto">
         <div class="px-4 sm:px-6 py-4 border-b flex items-center justify-between">
             <a href="/dashboard" class="text-xl font-bold tracking-tight text-gray-800 hover:text-blue-600 whitespace-nowrap">SwiftRoute</a>
-            <button aria-label="Notifications" class="p-1 rounded-full text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+            <button aria-label="Notifications" class="p-1 rounded-full text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 hidden md:inline-flex">
                 <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
                 </svg>
             </button>
         </div>
-        <nav class="flex-1 px-2 sm:px-4 pt-4 space-y-1 overflow-y-auto"> <% if (locals.loggedInUser) { %>
+        
+        <nav class="flex-1 px-2 sm:px-4 pt-4 space-y-1"> 
+            <% if (locals.loggedInUser) { %>
                 <a href="/dashboard" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath === '/dashboard' ? 'sidebar-link-active' : 'text-gray-700' %>">
+                    <svg class="w-5 h-5 mr-3 <%= locals.currentPath === '/dashboard' ? 'text-white' : 'text-gray-400' %>" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" /></svg>
                     <span>Home</span>
-                 </a>
+                </a>
 
-                 <% if (loggedInUser.role === 'warehouse_owner') { %>
-                     <a href="/warehouses" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/warehouses') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Warehouses</span></a>
-                     <a href="/stores" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/stores') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Stores</span></a>
-                     <a href="/items" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/items') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Inventory</span></a>
-                     <a href="/orders" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/orders') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Orders (Company)</span></a>
-                     <a href="/users" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/users') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Users</span></a>
-                     <a href="/vehicles" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/vehicles') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Vehicles</span></a>
-                     <a href="/suppliers" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/suppliers') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Suppliers</span></a>
-                     <a href="/purchase-orders" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/purchase-orders') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Purchase</span></a>
-                     <a href="/reporting/trips" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/reporting/trips') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Trip Logs</span></a>
-                     <a href="/reporting/fuel-logs" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/reporting/fuel-logs') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Fuel Logs</span></a>
-                     <a href="/reporting" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/reporting') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Reporting</span></a>
+                <% if (loggedInUser.role === 'warehouse_owner' || loggedInUser.role === 'admin') { %>
+                    <a href="/warehouses" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/warehouses') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Warehouses</span></a>
+                    <a href="/stores" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/stores') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Stores</span></a>
+                    <a href="/items" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/items') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Inventory</span></a>
+                    <a href="/orders" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/orders') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Orders</span></a>
+                    <a href="/suppliers" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/suppliers') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Suppliers</span></a>
+                    <a href="/purchase-orders" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/purchase-orders') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Purchase</span></a>
+                    <a href="/vehicles" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/vehicles') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Vehicles</span></a>
+                    <div>
+                        <h3 class="px-3 mt-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Management</h3>
+                        <div class="mt-1 space-y-1">
+                            <a href="/users" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/users') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Users</span></a>
+                            <% if (loggedInUser.role === 'admin') { %>
+                                <a href="/admin/companies" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/admin/companies') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Companies</span></a>
+                                <a href="/admin/settings" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/admin/settings') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Platform Settings</span></a>
+                            <% } %>
+                        </div>
+                    </div>
+                     <div>
+                        <h3 class="px-3 mt-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Reporting</h3>
+                        <div class="mt-1 space-y-1">
+                            <a href="/reporting" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath === '/reporting' ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Dashboard</span></a>
+                            <a href="/reporting/trips" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath === '/reporting/trips' ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Trip Logs</span></a>
+                            <a href="/reporting/fuel-logs" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath === '/reporting/fuel-logs' ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Fuel Logs</span></a>
+                        </div>
+                    </div>
                 <% } else if (loggedInUser.role === 'store_owner') { %>
-                     <a href="/orders" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/orders') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Orders (My Store)</span></a>
-                     <a href="/customers" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/customers') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Customers</span></a>
-                     <a href="/items/store" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/items/store') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Inventory</span></a>
-                     <a href="/users/store" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/users/store') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Employees</span></a>
-                     <a href="/reporting/store" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/reporting/store') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Reporting</span></a>
+                    <a href="/orders" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/orders') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Orders (My Store)</span></a>
                 <% } else if (loggedInUser.role === 'employee') { %>
                      <a href="/orders" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/orders') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Orders</span></a>
-                     <a href="/customers" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/customers') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Customers</span></a>
-                     <a href="/items/store" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/items/store') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Inventory</span></a>
                 <% } else if (loggedInUser.role === 'delivery_partner') { %>
-                     <a href="/deliveries/my" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/deliveries/my') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>My Deliveries</span></a>
-                     <a href="/deliveries/map" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/deliveries/map') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Route Map</span></a>
-                <% } else if (loggedInUser.role === 'admin') { %>
-                      <a href="/admin/companies" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/admin/companies') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Companies</span></a>
-                      <a href="/admin/users" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/admin/users') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>All Users</span></a>
-                      <a href="/vehicles" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/vehicles') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Vehicles</span>
-                      <a href="/admin/settings" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/admin/settings') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Platform Settings</span></a>
+                    <a href="/deliveries/my" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/deliveries/my') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>My Deliveries</span></a>
+                    <a href="/deliveries/map" class="flex items-center px-3 py-2 rounded-md text-sm hover:bg-gray-100 hover:text-gray-900 <%= locals.currentPath.startsWith('/deliveries/map') ? 'sidebar-link-active' : 'text-gray-700' %>"><span>Route Map</span></a>
                 <% } %>
             <% } %>
         </nav>
 
         <div class="relative mt-auto px-4 py-3 border-t border-gray-200">
             <% if (locals.loggedInUser) { %>
-                <button id="profileToggle" type="button" class="w-full flex items-center justify-start space-x-3 focus:outline-none rounded-md p-2 hover:bg-gray-100" onclick="toggleProfileDropdown(event)" aria-expanded="false" aria-controls="profileDropdown">
+                <button id="profileToggleBtn" type="button" class="w-full flex items-center justify-start space-x-3 focus:outline-none rounded-md p-2 hover:bg-gray-100" aria-expanded="false" aria-controls="profileDropdownMenu">
                     <div class="text-left overflow-hidden flex-1">
                         <p class="text-sm font-medium text-gray-800 truncate"><%= loggedInUser.username %></p>
                         <p class="text-xs text-gray-500 truncate capitalize">
-                             <%= locals.companyDetails ? locals.companyDetails.companyName : (loggedInUser.role ? loggedInUser.role.replace(/_/g, ' ') : 'N/A') %>
-                         </p>
+                            <%= locals.companyDetails ? locals.companyDetails.companyName : (loggedInUser.role ? loggedInUser.role.replace(/_/g, ' ') : 'N/A') %>
+                        </p>
                     </div>
-                    <svg id="profileArrow" class="w-4 h-4 ml-auto transform transition-transform duration-200 flex-shrink-0 text-gray-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
+                    <svg id="profileDropdownArrow" class="w-4 h-4 ml-auto transform transition-transform duration-200 flex-shrink-0 text-gray-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
                 </button>
-                <div id="profileDropdown" class="dropdown-menu absolute bottom-full left-0 mb-1 w-[calc(100%-2rem)] mx-4 bg-white border border-gray-200 rounded-md shadow-lg py-1">
+                <div id="profileDropdownMenu" class="dropdown-menu absolute bottom-full left-0 mb-1 w-[calc(100%-2rem)] mx-4 bg-white border border-gray-200 rounded-md shadow-lg py-1">
                     <a href="/profile" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">My Profile</a>
-                    <a href="/company/settings" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Settings</a>
+                    <% if (locals.loggedInUser && ['admin', 'warehouse_owner'].includes(loggedInUser.role)) { %>
+                        <a href="/company/settings" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Company Settings</a>
+                    <% } %>
                     <hr class="my-1 border-gray-200">
                     <form action="/logout" method="POST" class="w-full">
                         <button type="submit" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Logout</button>
                     </form>
                 </div>
             <% } else { %>
-                <p class="text-sm text-gray-500">Not logged in.</p> <a href="/login" class="text-sm text-blue-600 hover:underline">Login</a>
+                <p class="text-sm text-gray-500">Not logged in.</p> 
+                <a href="/login" class="text-sm text-blue-600 hover:underline">Login</a>
             <% } %>
         </div>
     </aside>
 
     <div id="main-content" class="flex-1 flex flex-col overflow-hidden">
-
-         <div class="sticky top-0 z-20 bg-white border-b border-gray-200 px-4 py-3 md:hidden"> <button id="hamburger-button" aria-label="Toggle sidebar" class="p-1 rounded text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500">
-                 <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"> <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /> </svg>
+        <div class="sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3 md:hidden flex items-center justify-between">
+             <button id="hamburger-button" aria-label="Toggle sidebar" class="p-1 rounded text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500">
+                 <svg id="menu-icon" class="h-6 w-6 block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                     <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                 </svg>
+                 <svg id="close-icon" class="h-6 w-6 hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                     <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                 </svg>
              </button>
+             <a href="/dashboard" class="text-lg font-bold text-gray-800">SwiftRoute</a>
+             <div><%# Placeholder for mobile actions (e.g., notifications if moved here) %></div>
          </div>
 
-        <%- body %> <%# Page content gets injected here %>
+        <%- body %> <%# Specific page content gets injected here %>
     </div>
 
 </div>
 
 <script>
-    // --- Profile Dropdown Logic ---
-    const profileButton = document.getElementById('profileToggle');
-    const profileDropdown = document.getElementById('profileDropdown');
-    const profileArrow = document.getElementById('profileArrow');
+    document.addEventListener('DOMContentLoaded', function() {
+        // --- Profile Dropdown Logic ---
+        const profileButton = document.getElementById('profileToggleBtn'); // Updated ID
+        const profileDropdownMenu = document.getElementById('profileDropdownMenu'); // Updated ID
+        const profileDropdownArrow = document.getElementById('profileDropdownArrow'); // Updated ID
 
-    function toggleProfileDropdown(event) {
-        event.stopPropagation(); // Prevent click from closing menu immediately
-        const isExpanded = profileButton.getAttribute('aria-expanded') === 'true';
-        profileButton.setAttribute('aria-expanded', !isExpanded);
-        profileDropdown.classList.toggle('show');
-        profileArrow.classList.toggle('rotate-180'); // Rotate arrow
-    }
+        if (profileButton && profileDropdownMenu) {
+            profileButton.addEventListener('click', function(event) {
+                event.stopPropagation();
+                const isExpanded = profileButton.getAttribute('aria-expanded') === 'true' || false;
+                profileButton.setAttribute('aria-expanded', !isExpanded);
+                profileDropdownMenu.classList.toggle('show');
+                if (profileDropdownArrow) {
+                    profileDropdownArrow.classList.toggle('rotate-180');
+                }
+            });
+        }
 
-    // Close dropdown if clicking outside
-    document.addEventListener('click', function(event) {
-        if (profileButton && profileDropdown && !profileButton.contains(event.target) && !profileDropdown.contains(event.target)) {
-            if (profileDropdown.classList.contains('show')) {
-                profileButton.setAttribute('aria-expanded', 'false');
-                profileDropdown.classList.remove('show');
-                profileArrow.classList.remove('rotate-180');
+        document.addEventListener('click', function(event) {
+            if (profileButton && profileDropdownMenu && 
+                !profileButton.contains(event.target) && !profileDropdownMenu.contains(event.target)) {
+                if (profileDropdownMenu.classList.contains('show')) {
+                    profileButton.setAttribute('aria-expanded', 'false');
+                    profileDropdownMenu.classList.remove('show');
+                    if (profileDropdownArrow) {
+                        profileDropdownArrow.classList.remove('rotate-180');
+                    }
+                }
+            }
+        });
+
+        // --- Responsive Sidebar Toggle Logic ---
+        const sidebar = document.getElementById('sidebar');
+        const mainContent = document.getElementById('main-content');
+        const hamburgerButton = document.getElementById('hamburger-button');
+        const menuIcon = document.getElementById('menu-icon');
+        const closeIcon = document.getElementById('close-icon');
+
+        function applySidebarState() {
+            if (!sidebar || !mainContent || !menuIcon || !closeIcon) return;
+
+            if (window.innerWidth < 768) { // Mobile view
+                if (sidebar.classList.contains('open')) {
+                    sidebar.style.transform = 'translateX(0)';
+                    menuIcon.classList.add('hidden');
+                    closeIcon.classList.remove('hidden');
+                } else {
+                    sidebar.style.transform = 'translateX(-100%)';
+                    menuIcon.classList.remove('hidden');
+                    closeIcon.classList.add('hidden');
+                }
+                mainContent.style.marginLeft = '0'; // Main content always full width on mobile
+            } else { // Desktop view
+                sidebar.classList.remove('open'); // Remove 'open' if resizing from mobile
+                sidebar.style.transform = 'translateX(0)'; // Sidebar always visible
+                mainContent.style.marginLeft = '16rem'; // Fixed margin for desktop
+                // Hamburger button itself is hidden by CSS on md screens, icons don't matter
             }
         }
+
+        if (hamburgerButton) {
+            hamburgerButton.addEventListener('click', function(event) {
+                event.stopPropagation();
+                if (sidebar) {
+                    sidebar.classList.toggle('open'); // This class drives mobile visibility
+                    applySidebarState(); // Update icons and ensure consistency
+                }
+            });
+        }
+        
+        // Initial state and on resize
+        applySidebarState();
+        window.addEventListener('resize', applySidebarState);
+
+        // Optional: Close mobile sidebar if clicking outside of it
+        document.addEventListener('click', function(event) {
+            if (sidebar && hamburgerButton && window.innerWidth < 768) {
+                if (!sidebar.contains(event.target) && !hamburgerButton.contains(event.target) && sidebar.classList.contains('open')) {
+                    sidebar.classList.remove('open');
+                    applySidebarState(); // Update icons
+                }
+            }
+        });
     });
-
-    // --- Sidebar Toggle Logic ---
-    const sidebar = document.getElementById('sidebar');
-    const mainContent = document.getElementById('main-content');
-    const hamburgerButton = document.getElementById('hamburger-button');
-
-    if (hamburgerButton && sidebar && mainContent) {
-         hamburgerButton.addEventListener('click', (e) => {
-             e.stopPropagation();
-             sidebar.classList.toggle('collapsed');
-             mainContent.classList.toggle('sidebar-collapsed');
-             // Persist state? Could use localStorage later
-         });
-    }
-
-     // Optional: Close sidebar if clicking outside on mobile/tablet?
-     // document.addEventListener('click', function(event) {
-     //     if (sidebar && mainContent && !sidebar.contains(event.target) && !hamburgerButton.contains(event.target)) {
-     //         if (!sidebar.classList.contains('collapsed') && window.innerWidth < 768) { // Only if not collapsed and on smaller screens
-     //             sidebar.classList.add('collapsed');
-     //             mainContent.classList.add('sidebar-collapsed');
-     //         }
-     //     }
-     // });
-
 </script>
 </body>
 </html>
