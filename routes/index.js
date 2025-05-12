@@ -13,7 +13,7 @@
     const Vehicle = require('../models/Vehicle');
     const bcrypt = require('bcrypt'); // Still needed for register/login
     const passport = require('passport'); // <-- Add passport
-    
+
     const router = express.Router();
 
     // --- Auth Middleware (Example - can be moved to a separate file) ---
@@ -206,22 +206,69 @@ router.get('/auth/google/callback',
         // Pass error message from query param if present
         res.render('login', { title: 'Login', error: req.query.error,layout: false});
     });
-    router.post('/login', async (req, res) => { /* ... keep login logic ... */
-        try {
-            const { email, password } = req.body;
-            const user = await User.findOne({ email });
-            if (!user) return res.redirect('/login?error=invalid');
-            const match = await bcrypt.compare(password, user.password);
-            if (!match) return res.redirect('/login?error=invalid');
+    // POST /login - Handle local login
+router.post('/login', async (req, res, next) => { // Added next for error handling
+    try {
+        const { email, password } = req.body;
 
-            req.session.regenerate(err => {
-                if (err) return res.redirect('/login?error=server');
-                req.session.userId = user._id;
-                console.log(`User ${user.username} logged in. Role: ${user.role}`);
-                res.redirect('/dashboard');
+        if (!email || !password) {
+            return res.redirect('/login?error=empty_fields');
+        }
+
+        const user = await User.findOne({ email: email.toLowerCase().trim() });
+        if (!user) {
+            console.log(`Login attempt failed: User not found - ${email}`);
+            return res.redirect('/login?error=invalid_credentials');
+        }
+
+        // Check if the user has a local password. If not, they might have signed up with Google.
+        if (!user.password) {
+            console.log(`Login attempt failed: User ${email} has no local password (likely a Google-only account).`);
+            return res.redirect('/login?error=use_google_signin');
+        }
+
+        const match = await bcrypt.compare(password, user.password);
+        if (!match) {
+            console.log(`Login attempt failed: Password mismatch for - ${email}`);
+            return res.redirect('/login?error=invalid_credentials');
+        }
+
+        // Regenerate session to prevent session fixation attacks before logging in
+        req.session.regenerate(function(err) {
+            if (err) {
+                console.error("Error regenerating session before login:", err);
+                return next(err); // Pass to global error handler
+            }
+
+            // Log the user in using Passport's req.login()
+            // This will establish a session and call serializeUser.
+            req.login(user, async function(err) {
+                if (err) {
+                    console.error("Error during req.login():", err);
+                    return next(err);
+                }
+
+                // Successfully authenticated and session established by Passport
+                try {
+                    user.lastLogin = new Date(); // Update last login time
+                    await user.save();
+                } catch (saveErr) {
+                    console.error("Error updating lastLogin on local login:", saveErr);
+                    // Non-critical, proceed
+                }
+                
+                console.log(`User ${user.username} logged in locally. Role: ${user.role}`);
+                return res.redirect('/dashboard');
             });
-        } catch (err) { /* ... error handling ... */ }
-    });
+        });
+
+    } catch (err) {
+        console.error("Server error during local login:", err);
+        // Pass to global error handler, or redirect with a generic server error
+        // return res.redirect('/login?error=server_error');
+        return next(err); 
+    }
+});
 
 
     // --- Dynamic Dashboard Route ---
