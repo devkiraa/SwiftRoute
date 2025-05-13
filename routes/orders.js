@@ -336,6 +336,7 @@ router.get('/:id', async (req, res) => {
         res.render('orders/details', {
             title: `Order Details - ${order._id.toString().slice(-8)}`,
             order: order,
+            sellerCompanyUpiId: order.warehouseId?.companyId?.upiId || null,
             allowedActions: allowedActions,
             availableDrivers: availableDrivers,
             hasAccess: hasAccess, // Ensure this is passed for Edit button logic
@@ -931,6 +932,15 @@ router.put('/:id/status', ensureCanManageOrder, async (req, res) => {
             const order = await Order.findById(orderId)
                 .populate({ path: 'orderItems.itemId', model: 'Item', select: 'name sku quantity' }) // Select fields needed by stock helper
                 .populate('warehouseId', '_id name')
+                .populate({
+        path: 'warehouseId',
+        select: 'name companyId', // Ensure companyId is selected
+        populate: { 
+            path: 'companyId', 
+            model: 'Company', // Populate the full company object for the warehouse
+            select: 'companyName upiId' // Specifically select upiId for the seller
+        } 
+    })
                 .session(session); // Use session
 
             if (!order) throw new Error("Order not found.");
@@ -1077,6 +1087,9 @@ router.get('/invoice/view/:orderId', ensureAuthenticated, async (req, res) => {
 // Assuming 'router', 'mongoose', 'Order', 'qrcode', 'numberToWordsINR', and 'printer' (Pdfmake instance)
 // are already defined and required/initialized appropriately in your file.
 
+// Assuming 'router', 'mongoose', 'Order', 'qrcode', 'numberToWordsINR', and 'printer' (Pdfmake instance)
+// are already defined and required/initialized appropriately in your file.
+
 // GET /orders/:id/invoice/pdf - Generate PDF invoice using pdfmake
 router.get('/:id/invoice/pdf', async (req, res) => { // ensureAuthenticated is already applied globally or ensureCanManageOrder can be added
     try {
@@ -1172,14 +1185,14 @@ router.get('/:id/invoice/pdf', async (req, res) => { // ensureAuthenticated is a
         });
         
         const grandTotalForInvoice = order.grandTotal !== undefined ? order.grandTotal : (totalTaxableValue + overallTotalGSTAmount + totalCessAmount - (order.totalDiscountAfterTax || 0) + (order.roundOff || 0));
-        const amountInWords = numberToWordsINR(grandTotalForInvoice);
+        const amountInWords = numberToWordsINR(grandTotalForInvoice); // This function should return "RUPEES ... ONLY"
         let vehicleNumberForInvoice = order.vehicleNumber || order.assignedDeliveryPartnerId?.currentVehicleId?.vehicleNumber;
 
         // --- QR Code Generation ---
         const onlineViewUrl = `${req.protocol}://${req.get('host')}/orders/invoice/view/${orderId}`;
         let qrOnlineViewDataUrl = ' '; 
         try { 
-            qrOnlineViewDataUrl = await qrcode.toDataURL(onlineViewUrl, { errorCorrectionLevel: 'M', width: 50, margin: 1 }); // Updated width to 50 for footer display
+            qrOnlineViewDataUrl = await qrcode.toDataURL(onlineViewUrl, { errorCorrectionLevel: 'M', width: 50, margin: 1 }); // Width for footer display
         } catch (qrErr) { console.error("Error generating online view QR code:", qrErr); }
         
         const verificationDataString = JSON.stringify({ 
@@ -1190,7 +1203,7 @@ router.get('/:id/invoice/pdf', async (req, res) => { // ensureAuthenticated is a
         });
         let qrVerificationDataUrl = ' ';
         try { 
-            qrVerificationDataUrl = await qrcode.toDataURL(verificationDataString, { errorCorrectionLevel: 'M', width: 80, margin: 1 }); 
+            qrVerificationDataUrl = await qrcode.toDataURL(verificationDataString, { errorCorrectionLevel: 'M', width: 160, margin: 1 }); 
         } catch (qrErr) { console.error("Error generating verification QR code:", qrErr); }
 
         const payeeVpa = sellerCompany.upiId || 'DEFAULT_SELLER_VPA@upi'; 
@@ -1202,7 +1215,7 @@ router.get('/:id/invoice/pdf', async (req, res) => { // ensureAuthenticated is a
         
         let qrUpiPaymentDataUrl = ' ';
         try {
-            qrUpiPaymentDataUrl = await qrcode.toDataURL(upiString, { errorCorrectionLevel: 'M', width: 60, margin: 1 });
+            qrUpiPaymentDataUrl = await qrcode.toDataURL(upiString, { errorCorrectionLevel: 'M', width: 120, margin: 1 }); 
             console.log("Generated UPI QR with string:", upiString);
         } catch (qrErr) {
             console.error("Error generating UPI payment QR code:", qrErr);
@@ -1215,7 +1228,7 @@ router.get('/:id/invoice/pdf', async (req, res) => { // ensureAuthenticated is a
                 invoiceNumber: order.invoiceNumber || `INV-${order._id.toString().slice(-6).toUpperCase()}`,
                 salesmanName: order.createdBy?.username || order.salesmanName, 
                 grandTotal: grandTotalForInvoice,
-                amountInWords: amountInWords,
+                amountInWords: amountInWords, // This will be used for display
                 vehicleNumber: vehicleNumberForInvoice,
                 billType: order.billType || 'CREDIT', 
                 invoiceType: order.invoiceType || 'SALES_INVOICE', 
@@ -1305,7 +1318,7 @@ router.get('/:id/invoice/pdf', async (req, res) => { // ensureAuthenticated is a
         const docDefinition = {
             pageSize: (invoiceData.pageSetup.size || 'A4').toUpperCase(),
             pageOrientation: (invoiceData.pageSetup.orientation || 'portrait').toLowerCase(),
-            pageMargins: [30, 30, 30, 30], 
+            pageMargins: [30, 30, 30, 40], 
 
             content: [
                 // --- Section 1: Header ---
@@ -1413,7 +1426,8 @@ router.get('/:id/invoice/pdf', async (req, res) => { // ensureAuthenticated is a
                                         { text: 'Scan for UPI Payment', style: 'qrLabelSmall', alignment: 'left', margin: [0,0,0,5]}
                                     ]} :
                                     { text: '[UPI QR]', style: 'qrPlaceholderSmall', margin: [0, 10, 0, 10] },
-                                { text: 'Notes', style: 'sectionLabel', margin: [0, 10, 0, 2] },
+                                { text: `Amount (in words): ${invoiceData.order.amountInWords || 'N/A'}`, style: 'amountInWordsSection', margin: [0, 10, 0, 10] },
+                                { text: 'Notes', style: 'sectionLabel', margin: [0, 0, 0, 2] }, // Adjusted top margin
                                 { text: invoiceData.order.notes || 'All goods are received in good condition.', style: 'footerTextInfo', margin: [0,0,0,10] },
                                 { text: 'T&C', style: 'sectionLabel', margin: [0, 0, 0, 2] },
                                 { text: invoiceData.order.termsAndConditions || '1. Subject to jurisdiction. 2. Goods once sold will not be returned.', style: 'footerTextInfo' },
@@ -1442,7 +1456,7 @@ router.get('/:id/invoice/pdf', async (req, res) => { // ensureAuthenticated is a
                         text: `Page ${currentPage.toString()} of ${pageCount}`,
                         style: 'pageFooter',
                         alignment: 'left',
-                        width: '*' // Takes up available space on the left
+                        width: '*' 
                     }
                 ];
             
@@ -1451,15 +1465,15 @@ router.get('/:id/invoice/pdf', async (req, res) => { // ensureAuthenticated is a
                         image: invoiceData.qrOnlineViewDataUrl,
                         width: 30, 
                         height: 30,
-                        alignment: 'right' // Image itself aligned to right of its column
+                        alignment: 'right' 
                     });
                 } else {
-                    footerColumns.push({text: '', width: 30, alignment: 'right'}); // Placeholder if no QR
+                    footerColumns.push({text: '', width: 30, alignment: 'right'}); 
                 }
             
                 return {
                     columns: footerColumns,
-                    margin: [30, -20, 30, 10] // L, T, R, B (Adjusted Top margin to pull footer up)
+                    margin: [30, -20, 30, 10] // User Provided: L, T, R, B
                 };
             },
         
@@ -1487,6 +1501,7 @@ router.get('/:id/invoice/pdf', async (req, res) => { // ensureAuthenticated is a
                 itemsTableFooterValueRight: { fontSize: 8, bold: true, alignment: 'right', margin: [2,3,2,3] },
                 itemsTableFooterValueBoldRight: { fontSize: 8.5, bold: true, alignment: 'right', margin: [2,3,2,3] },
                 emptyTableCell: { fontSize: 6, margin: [2, 3, 2, 3],  border: [false, false, false, false], lineHeight: 1.1 }, 
+                amountInWordsSection: { fontSize: 8, bold: true, italics: true, margin: [0, 5, 0, 5] }, // Style for Amount in Words
                 finalTotalText: { fontSize: 10, bold: true, color: '#333333' },
                 finalTotalAmount: { fontSize: 14, bold: true },
                 footerTextInfo: { fontSize: 7.5, lineHeight: 1.2, color: '#333333' },
