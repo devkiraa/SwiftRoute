@@ -59,16 +59,21 @@ router.get('/', async (req, res) => {
     }
 });
 
-// GET /stores/new - Show form to add a new store
+// routes/stores.js (GET /new excerpt - corrected)
 router.get('/new', async (req, res) => {
-    // Pass company list if admin needs to select
     let companies = [];
-    if (req.locals?.loggedInUser?.role === 'admin') {
-         companies = await Company.find().select('companyName _id').lean();
+    // CORRECTED: Use res.locals
+    if (res.locals.loggedInUser && res.locals.loggedInUser.role === 'admin') {
+        try {
+            companies = await Company.find().select('companyName _id').sort({ companyName: 1 }).lean();
+        } catch (err) {
+            console.error("Error fetching companies for admin (new store form):", err);
+        }
     }
     res.render('stores/form', {
         title: 'Add New Store',
-        store: {}, formData: {}, isEditing: false, companies, // Pass companies for admin
+        store: {}, formData: {}, isEditing: false, companies,
+        googleMapsApiKey: process.env.Maps_API_KEY_FRONTEND, // Pass API key for map
         layout: './layouts/dashboard_layout'
     });
 });
@@ -139,6 +144,7 @@ router.get('/:id/edit', async (req, res) => {
             formData: store, // Pre-fill formData too
             isEditing: true,
             companies, // Pass companies for admin if needed (though company shouldn't change)
+            googleMapsApiKey: process.env.Maps_API_KEY_FRONTEND,
             layout: './layouts/dashboard_layout'
         });
     } catch (err) {
